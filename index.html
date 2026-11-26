@@ -58,7 +58,7 @@ h2{font-size:15px;margin:0 0 8px}
 <div id="lock" style="display:none;position:fixed;inset:0;z-index:99;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;gap:12px"><b style="font-size:20px">🔒 Mis Cuentas</b><input id="pin" type="password" inputmode="numeric" placeholder="PIN" style="flex:none;width:160px;text-align:center"><button class="send" data-a="unlock" style="padding:10px 24px">Entrar</button><span id="lerr" class="r"></span></div>
 <script>
 const KEY='mis_cuentas_v1';
-let S={tx:[],bills:[],chat:[],last:[]},view='chat',per='month',resetArm=false;
+let S={tx:[],bills:[],debts:[],chat:[],last:[]},view='chat',per='month',resetArm=false;
 try{const r=localStorage.getItem(KEY);if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const $=s=>document.querySelector(s);
@@ -80,7 +80,7 @@ const rel=s=>{const n=Math.round((fromY(s)-today())/864e5);return n===0?'hoy':n=
 const CAT={Zelle:'#6d1ed4',Cuotas:'#e11d48',Tarjeta:'#0ea5e9',Comida:'#f59e0b',Transporte:'#3b82f6',Vivienda:'#8b5cf6',Servicios:'#06b6d4',Deudas:'#ef4444',Negocio:'#10b981',Salud:'#ec4899',Compras:'#f97316',Ocio:'#a855f7',Otros:'#94a3b8'};
 const CATRE=[['Zelle',/zelle/],['Cuotas',/affirm|afterpay|asterpay|klarna|sezzle|paypal credit/],['Tarjeta',/capital one|chase|discover|\bciti\b|amex|american express|visa|mastercard|apple card|synchrony|tarjeta|credit card/],['Comida',/comida|almuerzo|\bcena\b|desayuno|\bsuper\b|supermercado|pupusa|\bcafe\b|restaurante|pollo|mercado|pizza|panaderia/],['Transporte',/gasolina|diesel|\bbus\b|taxi|pasaje|uber|parqueo|peaje|llanta|transporte/],['Vivienda',/renta|alquiler|hipoteca|condominio|\bcasa\b/],['Servicios',/\bluz\b|\bagua\b|internet|telefono|celular|recarga|\bcable\b|netflix|spotify|energia|caess|claro|tigo|digicel/],['Deudas',/prestamo|credito|cuota|tarjeta|deuda|banco|financiera/],['Negocio',/inventario|mercaderia|proveedor|repuesto|herramienta|empleado|salario|planilla|negocio|insumo|publicidad/],['Salud',/medicina|doctor|medico|farmacia|hospital|clinica|dentista/],['Compras',/ropa|zapato|compra/],['Ocio',/\bcine\b|fiesta|salida|cerveza|licor|juego|paseo/]];
 const catOf=(n,t)=>{if(t==='in')return/vend|venta|cliente/.test(n)?'Ventas':/trabaj|sueldo|salario|quincena|reparacion|arreglo|servicio|mecanic/.test(n)?'Trabajo':'Otros ingresos';for(const [k,re] of CATRE)if(re.test(n))return k;return'Otros'};
-const OUT=/\b(pague|gaste|compre|me cobraron|se me fue)\b/,IN=/\b(gane|ganancia|cobre|me pagaron|vendi|ingrese|recibi|me depositaron|me dieron|me entro)\b/,BILL=/\b(tengo que|debo|pagar|vence|vencen|toca|hay que|pendiente)\b/;
+const OUT=/\b(pague|gaste|compre|abono|abone|me cobraron|se me fue)\b/,IN=/\b(gane|ganancia|cobre|me pagaron|vendi|ingrese|recibi|me depositaron|me dieron|me entro)\b/,BILL=/\b(tengo que|debo|pagar|vence|vencen|toca|hay que|pendiente)\b/;
 function blank(ctx,re){re=new RegExp(re.source,'g');const ms=[];let m;while((m=re.exec(ctx.n))){ms.push(m);if(!m[0].length)re.lastIndex++}
 for(const m of ms){const a=m.index,b=a+m[0].length,sp=' '.repeat(b-a);ctx.n=ctx.n.slice(0,a)+sp+ctx.n.slice(b);ctx.o=ctx.o.slice(0,a)+sp+ctx.o.slice(b)}return ms}
 function getDate(ctx,fut){const t=today();let m;const B=re=>blank(ctx,re)[0];
@@ -113,17 +113,21 @@ const pend=()=>S.bills.filter(b=>!b.paid);
 const pendSum=()=>pend().reduce((s,b)=>s+b.amt,0);
 const matchBill=(b,n)=>norm(b.desc).split(/\s+/).some(w=>w.length>2&&n.includes(w))||(b.cat!=='Otros'&&catOf(n,'out')===b.cat);
 function clause(c){const ctx={o:c,n:norm(c)},n0=ctx.n;
+if(isDebtDef(n0)){const r=debtDef(ctx,n0);if(r)return r}
 const type=OUT.test(n0)?'out':IN.test(n0)?'in':BILL.test(n0)?'bill':null;if(!type)return{bad:c};
 const rec=type==='bill'?getRec(ctx):null,cap=type==='bill'?getCap(ctx):null;
 const date=getDate(ctx,type==='bill'),amt=getAmount(ctx),cat=catOf(n0,type);let d=cleanDesc(ctx);
 if(type==='out'&&/\bya\b/.test(n0)){const b=pend().find(b=>matchBill(b,n0));if(b){b.paid=true;const t={id:uid(),type:'out',amt:amt||b.amt,desc:b.desc,cat:b.cat,date:date||ymd(today())};S.tx.push(t);S.last.push({k:'tx',id:t.id},{k:'bpay',id:b.id});nextBill(b);return{line:`Listo, marqué como pagado: ${b.desc} (${money(t.amt)}).`,tx:1}}}
+if(type==='out'){const ds=matchDebts(n0),a=amt||(ds.length===1&&ds[0].min)||0;
+if(ds.length>1&&a)return{line:'¿A cuál deuda va ese abono? Tienes: '+ds.map(x=>x.name).join(', ')+'. Dímelo con el nombre.'};
+if(ds.length===1&&a)return payDebt(ds[0],a,date||ymd(today()))}
 if(!amt)return{bad:c,why:1};
 if(!d)d=cat==='Otros'?(type==='in'?'Ingreso':'Gasto'):cat;
 if(type==='bill'){const b={id:uid(),amt,desc:d,cat,due:date,paid:false,rec,cap};S.bills.push(b);S.last.push({k:'bills',id:b.id});
 return{line:`Pendiente: pagar ${money(amt)} de ${d}`+(date?` el ${fmt(date)} (${rel(date)})`:' (sin fecha)')+(rec?', '+recTxt(rec):'')+(cap!=null?`, capital pendiente ${money(cap)}`:'')+'.'}}
 const t={id:uid(),type,amt,desc:d,cat,date:date||ymd(today())};S.tx.push(t);S.last.push({k:'tx',id:t.id});
 return{line:(type==='in'?'Ingreso anotado: +':'Gasto anotado: −')+money(amt)+` · ${d} · ${cat} · ${rel(t.date)}`,tx:1}}
-function splitClauses(o){const n=norm(o),V='gane|gaste|pague|compre|cobre|vendi|debo|tengo que|me pagaron|recibi|ya pague';
+function splitClauses(o){const n=norm(o),V='gane|gaste|pague|abono|abone|compre|cobre|vendi|debo|tengo que|me pagaron|recibi|ya pague';
 const re=new RegExp('\\s*;\\s*|\\.\\s+|,?\\s+(?:y|pero)\\s+(?=(?:tambien\\s+)?(?:'+V+')\\b)|,\\s*(?=(?:'+V+')\\b)','g');
 const out=[];let last=0,m;while((m=re.exec(n))){out.push(o.slice(last,m.index));last=m.index+m[0].length}out.push(o.slice(last));return out.filter(s=>s.trim())}
 function processMsg(o){S.last=[];const lines=[],bad=[];let added=0;
@@ -132,14 +136,16 @@ if(!lines.length)return bad.some(b=>b.why)?'Vi que quieres anotar algo pero no e
 let out=lines.join('\n');if(bad.length)out+=`\n(No pude leer: “${bad.map(b=>b.bad.trim()).join('”, “')}”)`;
 if(added)out+=`\nSaldo: ${money(bal())} · Libre tras pagar pendientes: ${money(bal()-pendSum())}`;return out}
 const HELP_SHORT='No te entendí del todo. Prueba con:\n• Hoy gané 120\n• Gasté 15 en almuerzo\n• Tengo que pagar 50 de luz el viernes\nEscribe “ayuda” para ver más.';
-const HELP='Escríbeme normal, como a un asistente:\n• Hoy gané 120 de ventas\n• Gasté 15 en almuerzo ayer\n• Tengo que pagar 50 de luz el viernes\n• Debo pagar 300 de renta el 1\n• Ya pagué la luz\n\nPuedes juntar varias cosas: “hoy gané 80 y gasté 20 en gasolina”.\nComandos: “resumen”, “qué debo”, “borrar último”.\nLo que dices con montos y fechas ($, “mil”, “mañana”, “el 15”, “el viernes”, “15 de diciembre”) lo entiendo.';
+const HELP='Escríbeme normal, como a un asistente:\n• Hoy gané 120 de ventas\n• Gasté 15 en almuerzo ayer\n• Tengo que pagar 50 de luz el viernes\n• Debo pagar 300 de renta el 1\n• Ya pagué la luz\n• Mi tarjeta Chase tiene saldo 1000, mínimo 35 el 15\n• Abono 150 a la tarjeta (baja el saldo)\n\nPuedes juntar varias cosas: “hoy gané 80 y gasté 20 en gasolina”.\nComandos: “resumen”, “qué debo”, “borrar último”.\nLo que dices con montos y fechas ($, “mil”, “mañana”, “el 15”, “el viernes”, “15 de diciembre”) lo entiendo.';
 function summaryText(){const inc=sumP('in','month'),exp=sumP('out','month'),by={};S.tx.filter(x=>x.type==='out'&&inP(x.date,'month')).forEach(x=>by[x.cat]=(by[x.cat]||0)+x.amt);
 const top=Object.entries(by).sort((a,b)=>b[1]-a[1])[0];
-return`Resumen de ${MES[today().getMonth()]}:\nIngresos: ${money(inc)}\nGastos: ${money(exp)}\nBalance del mes: ${money(inc-exp)}\nSaldo total: ${money(bal())}\nPor pagar: ${money(pendSum())}\nLibre tras pagar todo: ${money(bal()-pendSum())}`+(top?`\nLo que más se te va: ${top[0]} (${Math.round(top[1]/exp*100)}%).`:'')}
-function pendingText(){const p=pend().sort((a,b)=>(a.due||'9')<(b.due||'9')?-1:1);if(!p.length)return'No tienes pagos pendientes. 🎉';
+return`Resumen de ${MES[today().getMonth()]}:\nIngresos: ${money(inc)}\nGastos: ${money(exp)}\nBalance del mes: ${money(inc-exp)}\nSaldo total: ${money(bal())}\nPor pagar: ${money(pendSum())}\nLibre tras pagar todo: ${money(bal()-pendSum())}${debtTot()?`\nDeudas: ${money(debtTot())}`:''}`+(top?`\nLo que más se te va: ${top[0]} (${Math.round(top[1]/exp*100)}%).`:'')}
+function debtsText(){const ds=S.debts.filter(d=>d.bal>0);return ds.length?'Deudas:\n'+ds.map(d=>`• ${d.name} ${money(d.bal)}`+(d.due?` — próximo pago ${fmt(d.due)} (${rel(d.due)})`:'')).join('\n')+`\nTotal deuda: ${money(debtTot())}`:''}
+function pendingText(){const dt=debtsText(),p=pend().length?pendingBills():'';return dt||p?[dt,p].filter(Boolean).join('\n\n'):'No tienes pagos pendientes. 🎉'}
+function pendingBills(){const p=pend().sort((a,b)=>(a.due||'9')<(b.due||'9')?-1:1);if(!p.length)return'No tienes pagos pendientes. 🎉';
 return p.map(b=>`• ${b.desc} ${money(b.amt)} — `+(b.due?`${fmt(b.due)} (${rel(b.due)})`:'sin fecha')).join('\n')+`\nTotal: ${money(pendSum())}`}
 function undo(){if(!S.last.length)return'No hay nada que deshacer.';
-for(const l of S.last){if(l.k==='tx')S.tx=S.tx.filter(x=>x.id!==l.id);else if(l.k==='bills')S.bills=S.bills.filter(x=>x.id!==l.id);else{const b=S.bills.find(x=>x.id===l.id);if(b)b.paid=false}}
+for(const l of S.last){if(l.k==='tx')S.tx=S.tx.filter(x=>x.id!==l.id);else if(l.k==='bills')S.bills=S.bills.filter(x=>x.id!==l.id);else if(l.k==='dbal'){const d=S.debts.find(x=>x.id===l.id);if(d){d.bal=l.v;d.due=l.due}}else if(l.k==='debt')S.debts=S.debts.filter(x=>x.id!==l.id);else{const b=S.bills.find(x=>x.id===l.id);if(b)b.paid=false}}
 S.last=[];return'Listo, deshice lo último.'}
 function say(w,t){S.chat.push({w,t});if(S.chat.length>80)S.chat.shift()}
 function handle(raw){const o=raw.trim().normalize('NFC');if(!o)return;
@@ -167,7 +173,30 @@ function getCap(ctx){const m=blank(ctx,/\bcapital(?: de| total| pendiente)?\s*\$
 function nextBill(b){if(!b.rec)return;const cap=b.cap!=null?Math.round((b.cap-b.amt)*100)/100:null;if(cap!=null&&cap<=0)return;
 const d=b.due?fromY(b.due):today(),n=b.rec==='m'?mk(d.getFullYear(),d.getMonth()+1,d.getDate()):addDays(d,b.rec);
 const x={id:uid(),amt:cap!=null?Math.min(b.amt,cap):b.amt,desc:b.desc,cat:b.cat,due:ymd(n),paid:false,rec:b.rec,cap};S.bills.push(x);S.last.push({k:'bills',id:x.id})}
-const OCR={items:[]};
+const GEN=new Set(['tarjeta','deuda','credito','prestamo','cuenta','pago','saldo']);
+const debtTot=()=>S.debts.reduce((s,d)=>s+Math.max(0,d.bal),0);
+const advance=(s,r)=>{const d=fromY(s);return ymd(r==='m'?mk(d.getFullYear(),d.getMonth()+1,d.getDate()):addDays(d,r))};
+const isDebtDef=n=>(/\b(deuda|saldo|balance|capital|adeudo)\b/.test(n)||/\bdebo\s+\$?\d/.test(n))&&!OUT.test(n);
+function getMin(ctx){const m=blank(ctx,/\b(?:pago minimo|minimo|cuota(?: de)?|pagos? de|paga)\s*\$?\s*(\d[\d,]*(?:\.\d+)?)/)[0];return m?parseFloat(m[1].replace(/,/g,'')):0}
+function matchDebts(n){let best=[],sc=0;
+for(const d of S.debts.filter(d=>d.bal>0)){const nm=norm(d.name),ws=nm.split(/\s+/).filter(w=>w.length>2&&!GEN.has(w));let s=ws.filter(w=>n.includes(w)).length;
+if(!s&&/tarjeta|credito/.test(nm)&&/tarjeta|credito/.test(n)&&(/\b(abono|abone)\b/.test(n)||/\ba (?:la|mi) (?:tarjeta|credito)\b/.test(n)))s=.5;
+if(s>sc){sc=s;best=[d]}else if(s&&s===sc)best.push(d)}return best}
+function payDebt(d,amt,date){const before=d.bal,paid=Math.min(amt,d.bal),extra=Math.round((amt-paid)*100)/100,due0=d.due;
+d.bal=Math.round((d.bal-paid)*100)/100;
+const t={id:uid(),type:'out',amt:paid,desc:'Abono '+d.name,cat:d.cat,date};S.tx.push(t);S.last.push({k:'tx',id:t.id},{k:'dbal',id:d.id,v:before,due:due0});
+let nx='';if(d.bal>0&&d.due&&d.rec&&fromY(d.due)<=addDays(today(),7)){d.due=advance(d.due,d.rec);nx=` Próximo pago: ${fmt(d.due)}.`}
+return{line:`${d.name}: abonaste ${money(paid)}. Antes debías ${money(before)}, `+(d.bal>0?`ahora debes ${money(d.bal)}.`:'ahora queda en $0, ¡deuda pagada! 🎉')+nx+(extra?` (Sobraron ${money(extra)}, esos no los anoté.)`:''),tx:1}}
+function debtDef(ctx,n0){const rec=getRec(ctx),cap=getCap(ctx),mn=getMin(ctx),date=getDate(ctx,true),amt=getAmount(ctx);
+const bal=cap!=null?cap:amt,min=cap!=null?(mn||amt):mn;if(!bal)return null;
+blank(ctx,/\b(deuda|saldo|balance|capital|adeudo|total|actual|tengo|debo|pagar|mi|tiene)\b/);
+let cat=catOf(n0,'out');if(cat==='Otros')cat='Deudas';
+let name=cleanDesc(ctx)||(cat==='Tarjeta'?'Tarjeta':cat==='Cuotas'?'Cuotas':'Deuda');
+const old=matchDebts(n0)[0]||S.debts.find(d=>d.bal>0&&norm(d.name)===norm(name));
+if(old){S.last.push({k:'dbal',id:old.id,v:old.bal,due:old.due});old.bal=bal;if(date)old.due=date;if(rec)old.rec=rec;if(min)old.min=min;return{line:`${old.name}: saldo actualizado a ${money(bal)}.`}}
+const d={id:uid(),name,bal,min:min||0,due:date,rec,cat};S.debts.push(d);S.last.push({k:'debt',id:d.id});
+return{line:`Deuda anotada: ${name} ${money(bal)}`+(d.min?`, mínimo ${money(d.min)}`:'')+(date?`, próximo pago ${fmt(date)} (${rel(date)})`:'')+(rec?`, ${recTxt(rec)}`:'')+`. Dime “abono 150 a ${name}” y la bajo.`}}
+const OCR={items:[],raw:''};
 const MON={ene:0,jan:0,feb:1,mar:2,abr:3,apr:3,may:4,jun:5,jul:6,ago:7,aug:7,sep:8,oct:9,nov:10,dic:11,dec:11};
 const MR='ene|jan|feb|mar|abr|apr|may|jun|jul|ago|aug|sep|oct|nov|dic|dec';
 const mkd=(mo,d,y)=>ymd(mk(y?+y:today().getFullYear(),mo,d));
@@ -177,30 +206,42 @@ if(m=new RegExp('\\b(\\d{1,2})\\s+(?:de\\s+)?('+MR+')[a-z]*\\.?(?:\\s+(?:de\\s+)
 if(m=/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/.exec(n)){let a=+m[1],b=+m[2];if(a>12)[a,b]=[b,a];return mkd(a-1,b,m[3]?(+m[3]<100?2000+ +m[3]:m[3]):0)}
 return null}
 const redact=t=>t.replace(/(?:\d[ -]?){12,19}/g,'[#]').replace(/\b\d{8,}\b/g,'[#]').replace(/(?:\*{2,}|x{2,}|•{2,}|ending in|terminada en|termina en)\s*\d{2,4}/gi,'[#]');
-function ocrItems(text){const t=today(),out=[];
+function ocrItems(text){const t=today(),L=text.split(/\n+/).map(s=>s.trim()).filter(Boolean),N=L.map(norm),gz=/zelle/.test(norm(text));
 const PRV=/zelle|affirm|afterpay|asterpay|klarna|sezzle|paypal|amazon|ebay|capital one|chase|discover|citi|amex|american express|apple card|synchrony|walmart|target|best buy|bank of america|wells fargo|navy federal|visa|mastercard/;
-for(const l of text.split(/\n+/)){const n=norm(l);if(n.trim().length<4)continue;
-const am=[...l.matchAll(/\$\s*([\d,]+(?:\.\d{2})?)|\b(\d[\d,]*\.\d{2})\b/g)].map(m=>parseFloat((m[1]||m[2]).replace(/,/g,''))).filter(x=>x>0);if(!am.length)continue;
-const pv=(PRV.exec(n)||[])[0],isIn=/received|recibiste|deposit|refund|reembolso|cashback|sent you|te envio/.test(n),
-isBill=/\bdue\b|vence|vencimiento|upcoming|proximo|minimum|pago minimo|installment|cuota|scheduled|programado|next payment/.test(n),
-isOut=/paid|pagado|payment|\bpago\b|\bsent\b|enviaste|purchase|compra|debit|withdrawal|descuento|autopay|retiro/.test(n);
-if(!(isIn||isBill||isOut||pv))continue;
-const type=isIn?'in':isBill?'bill':'out',amt=am[0],date=ocrDate(n),dd=type==='bill'?date:(date||ymd(t));
-const rest=l.replace(new RegExp('\\b('+MR+')[a-z]*\\.?\\s+\\d{1,2}(?:,?\\s+\\d{4})?\\b','gi'),' ').replace(/\$\s*[\d,.]+|\b\d[\d,]*\.\d{2}\b|\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?/g,' ').replace(pv?new RegExp(pv,'i'):/$^/,' ').replace(/[^\p{L} ]+/gu,' ').replace(/\s+/g,' ').trim().slice(0,24);
+const pass=loose=>{const out=[];
+for(let i=0;i<L.length&&out.length<40;i++){const l=L[i],n=N[i];
+const am=[...l.matchAll(/(?:\$|\bS)\s?(\d[\d,]*(?:\.\d{2})?)|\b(\d[\d,]*\.\d{2})\b/g)].map(m=>parseFloat((m[1]||m[2]).replace(/,/g,''))).filter(x=>x>0&&x<1e6);if(!am.length)continue;
+const cx=N.slice(Math.max(0,i-2),i+3).join(' | '),has=re=>re.test(n)||re.test(cx);
+const pv=(PRV.exec(n)||PRV.exec(cx)||[])[0]||(gz?'zelle':'');
+const isIn=has(/received|recibiste|deposit|refund|reembolso|cashback|sent you|te envio|te enviaron/),
+isBill=has(/\bdue\b|vence|vencimiento|upcoming|proximo|minimum|pago minimo|installment|cuota|scheduled|programado|next payment/),
+isOut=has(/paid|pagado|payment|\bpago\b|\bsent\b|enviaste|enviado|purchase|compra|debit|withdrawal|descuento|autopay|retiro/);
+if(!loose&&!(isIn||isBill||isOut||pv))continue;
+const type=pv==='zelle'?(isIn?'in':'out'):isIn?'in':isBill?'bill':'out',amt=am[0],date=ocrDate(n)||ocrDate(cx),dd=type==='bill'?date:(date||ymd(t));
+let rest=l.replace(new RegExp('\\b('+MR+')[a-z]*\\.?\\s+\\d{1,2}(?:,?\\s+\\d{4})?\\b','gi'),' ').replace(/(?:\$|\bS)\s?\d[\d,.]*|\b\d[\d,]*\.\d{2}\b|\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?/g,' ').replace(pv?new RegExp(pv,'i'):/$^/,' ').replace(/[^\p{L} ]+/gu,' ').replace(/\s+/g,' ').trim().slice(0,24);
+const cl=s=>s.replace(/[^\p{L} ]+/gu,' ').replace(/\b(you|sent|paid|to|from|payment|received|confirmation|enviaste|enviado|pago|recibiste)\b/gi,' ').replace(/\s+/g,' ').trim().slice(0,24);
+rest=cl(rest);for(const k of [i+1,i-1]){if(!rest&&L[k]&&!/\d/.test(L[k]))rest=cl(L[k])}
 const desc=(pv?pv.replace(/\b\w/g,c=>c.toUpperCase())+(rest?' '+rest:''):rest)||'Movimiento';
+if(out.some(x=>x.amt===amt&&x.date===dd&&x.type===type))continue;
 const dup=S.tx.some(x=>x.amt===amt&&x.date===dd&&x.type===type)||S.bills.some(b=>b.amt===amt&&b.due===dd);
-out.push({type,amt,desc,cat:catOf(n,type==='in'?'in':'out'),date:dd,rec:type==='bill'?getRec({n,o:n}):null,dup,on:!dup});if(out.length>=40)break}
-return out}
+out.push({type,amt,desc,cat:catOf((pv?pv+' ':'')+n,type==='in'?'in':'out'),date:dd,rec:type==='bill'?getRec({n,o:n}):null,dup,on:!dup&&!loose})}
+return out};
+let o=pass(false);if(!o.length)o=pass(true);return o}
+async function prep(f){const bm=await createImageBitmap(f),k=Math.min(2,Math.max(1,1600/bm.width)),c=document.createElement('canvas');c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);
+const x=c.getContext('2d');x.drawImage(bm,0,0,c.width,c.height);const im=x.getImageData(0,0,c.width,c.height),d=im.data;let s=0;
+for(let i=0;i<d.length;i+=4){const g=.299*d[i]+.587*d[i+1]+.114*d[i+2];d[i]=d[i+1]=d[i+2]=g;s+=g}
+if(s/(d.length/4)<110)for(let i=0;i<d.length;i+=4){d[i]=d[i+1]=d[i+2]=255-d[i]}
+x.putImageData(im,0,0);return c}
 async function ocrRun(f){
 try{stat('Cargando lector de imágenes…');
 if(!window.Tesseract)await new Promise((ok,no)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';s.onload=ok;s.onerror=no;document.head.appendChild(s)});
 const w=await Tesseract.createWorker('eng+spa',1,{logger:m=>{if(m.status==='recognizing text')stat('Leyendo captura… '+Math.round(m.progress*100)+'%')}});
-const u=URL.createObjectURL(f);const {data}=await w.recognize(u);URL.revokeObjectURL(u);await w.terminate();
-const it=ocrItems(redact(data.text));OCR.items=OCR.items.concat(it);
-say('b',it.length?`Encontré ${it.length} movimientos en la captura. Revísalos y guarda los que estén bien. La imagen y el texto leído no se guardan, y los números largos de cuenta o tarjeta se borran.`:'No saqué movimientos claros de esa captura. Prueba recortando solo la lista de pagos.')}
+const {data}=await w.recognize(await prep(f));await w.terminate();
+const rt=redact(data.text),it=ocrItems(rt);OCR.items=OCR.items.concat(it);if(!it.length)OCR.raw=rt.slice(0,700);
+say('b',it.length?`Encontré ${it.length} movimientos en la captura. Revísalos y guarda los que estén bien. La imagen y el texto leído no se guardan, y los números largos de cuenta o tarjeta se borran.`:'No saqué movimientos claros de esa captura. Abajo te dejo el texto que alcancé a leer para ver qué pasó.')}
 catch(e){say('b','No pude leer la captura. La primera vez necesita internet para bajar el lector; después funciona sin conexión.')}
 stat('');save();render()}
-function ocrCard(){if(!OCR.items.length)return'';
+function ocrCard(){if(!OCR.items.length)return OCR.raw?`<div class="card"><h2>Lo que leí (no se guarda)</h2><pre style="white-space:pre-wrap;font:12px/1.4 monospace;margin:0 0 8px">${esc(OCR.raw)}</pre><button class="sm" data-a="ocrno">Cerrar</button></div>`:'';
 return`<div class="card"><h2>Revisa lo que leí</h2>${OCR.items.map((x,i)=>`<div class="li" data-a="ocrtog" data-t="${i}"><span style="font-size:20px">${x.on?'☑':'☐'}</span><div class="t"><b>${esc(x.desc)}</b><span class="k">${x.type==='bill'?'Por pagar':x.type==='in'?'Ingreso':'Gasto'} · ${x.date?fmt(x.date):'sin fecha'}${x.rec?' · '+recTxt(x.rec):''}${x.dup?' · ya existe':''}</span></div><b>${money(x.amt)}</b></div>`).join('')}<div class="row" style="margin-top:8px"><button class="send" data-a="ocrsave" style="padding:10px">Guardar seleccionados</button><button class="sm" data-a="ocrno">Descartar</button></div></div>`}
 function ocrSave(){let a=0,b=0;S.last=[];
 for(const x of OCR.items){if(!x.on)continue;
@@ -276,8 +317,10 @@ return`<div class="seg">${[['week','7 días'],['month','Mes'],['all','Todo']].ma
 <div class="card"><h2>Últimos 7 días</h2><div class="wrap">${bars()}</div></div>
 <div class="card"><h2>Movimientos recientes</h2>${rc.length?rc.map(x=>`<div class="li"><div class="t"><b>${esc(x.desc)}</b><span class="k">${fmt(x.date)} · ${esc(x.cat)}</span></div><b class="${x.type==='in'?'g':'r'}">${x.type==='in'?'+':'−'}${money(x.amt)}</b><button class="sm" data-a="dtx" data-t="${x.id}">✕</button></div>`).join(''):'<p class="mut">Sin movimientos todavía.</p>'}</div>
 <button class="sm" data-a="reset" style="width:100%;padding:10px">${resetArm?'¿Seguro? Toca otra vez para borrar todo':'Borrar todos mis datos'}</button>`}
-function vPend(){const p=pend().sort((a,b)=>(a.due||'9')<(b.due||'9')?-1:1),t=ymd(today());
-return`<div class="card"><h2>Pagos pendientes · ${money(pendSum())}</h2>${p.length?p.map(b=>{const od=b.due&&b.due<t,c=od?'r':b.due===t?'':'mut';return`<div class="li"><div class="t"><b>${esc(b.desc)}</b><span class="k ${c}">${b.due?fmt(b.due)+' · '+rel(b.due):'sin fecha'}${b.rec?' · '+recTxt(b.rec):''}${b.cap!=null?' · capital '+money(b.cap):''}</span></div><b>${money(b.amt)}</b><button class="sm" data-a="pay" data-t="${b.id}">Pagado</button><button class="sm" data-a="dbill" data-t="${b.id}">✕</button></div>`}).join(''):'<p class="mut">Nada pendiente. Escribe en el chat: “tengo que pagar 50 de luz el viernes”.</p>'}</div>`}
+function vPend(){const dts=S.debts.filter(d=>d.bal>0).sort((a,b)=>(a.due||'9')<(b.due||'9')?-1:1),tt=ymd(today());
+const dc=dts.length?`<div class="card"><h2>Deudas · ${money(debtTot())}</h2>${dts.map(d=>`<div class="li"><div class="t"><b>${esc(d.name)}</b><span class="k ${d.due&&d.due<tt?'r':'mut'}">${d.due?'Próximo pago '+fmt(d.due)+' · '+rel(d.due):'sin fecha'}${d.min?' · mínimo '+money(d.min):''}${d.rec?' · '+recTxt(d.rec):''}</span></div><b>${money(d.bal)}</b><button class="sm" data-a="dpay" data-t="${d.id}">Abonar</button><button class="sm" data-a="ddel" data-t="${d.id}">✕</button></div>`).join('')}</div>`:'';
+const p=pend().sort((a,b)=>(a.due||'9')<(b.due||'9')?-1:1),t=ymd(today());
+return dc+`<div class="card"><h2>Pagos pendientes · ${money(pendSum())}</h2>${p.length?p.map(b=>{const od=b.due&&b.due<t,c=od?'r':b.due===t?'':'mut';return`<div class="li"><div class="t"><b>${esc(b.desc)}</b><span class="k ${c}">${b.due?fmt(b.due)+' · '+rel(b.due):'sin fecha'}${b.rec?' · '+recTxt(b.rec):''}${b.cap!=null?' · capital '+money(b.cap):''}</span></div><b>${money(b.amt)}</b><button class="sm" data-a="pay" data-t="${b.id}">Pagado</button><button class="sm" data-a="dbill" data-t="${b.id}">✕</button></div>`}).join(''):'<p class="mut">Nada pendiente. Escribe en el chat: “tengo que pagar 50 de luz el viernes”.</p>'}</div>`}
 function render(){const m=$('#main');$('#sal').textContent='Saldo '+money(bal());$('#sal').className=bal()<0?'r':'g';
 m.innerHTML=view==='chat'?vChat():view==='res'?vRes():vPend();$('#comp').style.display=view==='chat'?'':'none';
 if(view==='chat')m.scrollTop=m.scrollHeight;
@@ -288,8 +331,10 @@ if(a==='ai')aiToggle();
 else if(a==='cam')$('#file').click();
 else if(a==='ocrtog'){OCR.items[+t].on=!OCR.items[+t].on;render()}
 else if(a==='ocrsave')ocrSave();
-else if(a==='ocrno'){OCR.items=[];render()}
+else if(a==='ocrno'){OCR.items=[];OCR.raw='';render()}
 else if(a==='unlock')unlock();
+else if(a==='ddel'){S.debts=S.debts.filter(x=>x.id!==t);save();render()}
+else if(a==='dpay'){const d=S.debts.find(x=>x.id===t);if(d){view='chat';render();inp.value='Abono a '+d.name+' ';inp.focus()}}
 else if(a==='tab'){view=t;render()}
 else if(a==='per'){per=t;render()}
 else if(a==='send'){handle(inp.value);inp.value=''}
@@ -298,7 +343,7 @@ else if(a==='chip'){inp.value=t.replace('  ',' ');inp.focus()}
 else if(a==='dtx'){S.tx=S.tx.filter(x=>x.id!==t);save();render()}
 else if(a==='dbill'){S.bills=S.bills.filter(x=>x.id!==t);save();render()}
 else if(a==='pay'){const b=S.bills.find(x=>x.id===t);if(b){b.paid=true;S.tx.push({id:uid(),type:'out',amt:b.amt,desc:b.desc,cat:b.cat,date:ymd(today())});nextBill(b);save();render()}}
-else if(a==='reset'){if(resetArm){S={tx:[],bills:[],chat:[],last:[]};resetArm=false;save()}else resetArm=true;render()}});
+else if(a==='reset'){if(resetArm){S={tx:[],bills:[],debts:[],chat:[],last:[]};resetArm=false;save()}else resetArm=true;render()}});
 $('#inp').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();handle(e.target.value);e.target.value=''}});
 render();setAI();lockNow();
 $('#file').addEventListener('change',async e=>{const fs=[...e.target.files];e.target.value='';for(const f of fs)await ocrRun(f)});
