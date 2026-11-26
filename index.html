@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mis Cuentas</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--tx:#14181f;--mut:#6b7380;--line:#e4e7ec;--acc:#0f9d6a;--red:#d9363e;--amb:#c77d0a;--mex:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1116;--card:#171b22;--tx:#eef1f5;--mut:#98a2b0;--line:#262c36;--acc:#34d399;--red:#f87171;--amb:#fbbf24;--mex:#06281c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e1116;--card:#171b22;--tx:#eef1f5;--mut:#98a2b0;--line:#262c36;--acc:#34d399;--red:#f87171;--amb:#fbbf24;--mex:#06281c;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column}
+header{padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);background:var(--card)}
+h1{font-size:18px;margin:0}
+#sal{font-weight:700;font-size:14px}
+main{flex:1;overflow-y:auto;padding:12px 14px}
+.b{max-width:86%;padding:9px 12px;border-radius:16px;white-space:pre-wrap;margin:6px 0;word-wrap:break-word}
+.u{margin-left:auto;background:var(--acc);color:var(--mex);border-bottom-right-radius:4px}
+.a{background:var(--card);border:1px solid var(--line);border-bottom-left-radius:4px}
+#comp{padding:8px 12px;border-top:1px solid var(--line);background:var(--card)}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px}
+.chip{flex:none;border:1px solid var(--line);background:var(--bg);color:var(--tx);border-radius:99px;padding:5px 11px;font-size:13px}
+.row{display:flex;gap:8px}
+input{flex:1;font-size:16px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--tx);min-width:0}
+button{font:inherit;cursor:pointer}
+.send{background:var(--acc);color:var(--mex);border:0;border-radius:12px;padding:0 16px;font-weight:700}
+nav{display:flex;border-top:1px solid var(--line);background:var(--card)}
+nav button{flex:1;border:0;background:none;color:var(--mut);padding:10px 4px;font-size:13px}
+nav button.on{color:var(--acc);font-weight:700}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.grid .card{margin:0}
+.k{font-size:12px;color:var(--mut)}.v{font-size:20px;font-weight:700}
+.g{color:var(--acc)}.r{color:var(--red)}.mut{color:var(--mut)}
+.seg{display:flex;gap:6px;margin-bottom:12px}
+.seg button{flex:1;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--tx)}
+.seg button.on{background:var(--acc);color:var(--mex);border-color:var(--acc);font-weight:700}
+h2{font-size:15px;margin:0 0 8px}
+.li{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+.li:first-of-type{border-top:0}
+.li .t{flex:1;min-width:0}.li .t b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sm{border:1px solid var(--line);background:var(--bg);color:var(--tx);border-radius:8px;padding:5px 9px;font-size:13px}
+.leg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;margin-top:8px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
+.wrap{overflow-x:auto}
+</style></head><body>
+<header><h1>💸 Mis Cuentas</h1><span><button class="sm" data-a="ai" id="aibtn">🧠 IA: off</button> <b id="sal"></b></span></header><div id="aistat" class="k" style="padding:0 16px"></div>
+<main id="main"></main>
+<div id="comp"><div class="chips">
+<button class="chip" data-a="chip" data-t="Hoy gané ">Hoy gané…</button>
+<button class="chip" data-a="chip" data-t="Gasté ">Gasté…</button>
+<button class="chip" data-a="chip" data-t="Tengo que pagar  el ">Tengo que pagar…</button>
+<button class="chip" data-a="chip" data-t="Ya pagué ">Ya pagué…</button>
+<button class="chip" data-a="send2" data-t="resumen">Resumen</button>
+<button class="chip" data-a="send2" data-t="qué debo">Qué debo</button>
+</div><div class="row"><input id="inp" placeholder="Ej: hoy gané 120 de ventas" enterkeyhint="send" autocomplete="off"><button class="send" data-a="send">Enviar</button></div></div>
+<nav id="nav"></nav>
+<script>
+const KEY='mis_cuentas_v1';
+let S={tx:[],bills:[],chat:[],last:[]},view='chat',per='month',resetArm=false;
+try{const r=localStorage.getItem(KEY);if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const $=s=>document.querySelector(s);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const pad=n=>String(n).padStart(2,'0');
+const ymd=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d};
+const fromY=s=>{const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
+const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+const mk=(y,m,d)=>new Date(y,m,Math.min(d,new Date(y,m+1,0).getDate()));
+const money=n=>{n=Math.round(n*100)/100;return(n<0?'−':'')+'$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2})};
+const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const MES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const DIA=['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
+const DS=['dom','lun','mar','mié','jue','vie','sáb'],MC=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+const fmt=s=>{const d=fromY(s);return DS[d.getDay()]+' '+d.getDate()+' '+MC[d.getMonth()]};
+const rel=s=>{const n=Math.round((fromY(s)-today())/864e5);return n===0?'hoy':n===1?'mañana':n===-1?'ayer':n>0?'en '+n+' días':'hace '+(-n)+' días'};
+const CAT={Comida:'#f59e0b',Transporte:'#3b82f6',Vivienda:'#8b5cf6',Servicios:'#06b6d4',Deudas:'#ef4444',Negocio:'#10b981',Salud:'#ec4899',Compras:'#f97316',Ocio:'#a855f7',Otros:'#94a3b8'};
+const CATRE=[['Comida',/comida|almuerzo|\bcena\b|desayuno|\bsuper\b|supermercado|pupusa|\bcafe\b|restaurante|pollo|mercado|pizza|panaderia/],['Transporte',/gasolina|diesel|\bbus\b|taxi|pasaje|uber|parqueo|peaje|llanta|transporte/],['Vivienda',/renta|alquiler|hipoteca|condominio|\bcasa\b/],['Servicios',/\bluz\b|\bagua\b|internet|telefono|celular|recarga|\bcable\b|netflix|spotify|energia|caess|claro|tigo|digicel/],['Deudas',/prestamo|credito|cuota|tarjeta|deuda|banco|financiera/],['Negocio',/inventario|mercaderia|proveedor|repuesto|herramienta|empleado|salario|planilla|negocio|insumo|publicidad/],['Salud',/medicina|doctor|medico|farmacia|hospital|clinica|dentista/],['Compras',/ropa|zapato|compra/],['Ocio',/\bcine\b|fiesta|salida|cerveza|licor|juego|paseo/]];
+const catOf=(n,t)=>{if(t==='in')return/vend|venta|cliente/.test(n)?'Ventas':/trabaj|sueldo|salario|quincena|reparacion|arreglo|servicio|mecanic/.test(n)?'Trabajo':'Otros ingresos';for(const [k,re] of CATRE)if(re.test(n))return k;return'Otros'};
+const OUT=/\b(pague|gaste|compre|me cobraron|se me fue)\b/,IN=/\b(gane|ganancia|cobre|me pagaron|vendi|ingrese|recibi|me depositaron|me dieron|me entro)\b/,BILL=/\b(tengo que|debo|pagar|vence|vencen|toca|hay que|pendiente)\b/;
+function blank(ctx,re){re=new RegExp(re.source,'g');const ms=[];let m;while((m=re.exec(ctx.n))){ms.push(m);if(!m[0].length)re.lastIndex++}
+for(const m of ms){const a=m.index,b=a+m[0].length,sp=' '.repeat(b-a);ctx.n=ctx.n.slice(0,a)+sp+ctx.n.slice(b);ctx.o=ctx.o.slice(0,a)+sp+ctx.o.slice(b)}return ms}
+function getDate(ctx,fut){const t=today();let m;const B=re=>blank(ctx,re)[0];
+if(B(/\bpasado manana\b/))return ymd(addDays(t,2));
+if(B(/\bmanana\b/))return ymd(addDays(t,1));
+if(B(/\bhoy\b/))return ymd(t);
+if(B(/\bayer\b/))return ymd(addDays(t,-1));
+if(m=B(/\ben (\d+) dias?\b/))return ymd(addDays(t,+m[1]));
+if(m=B(/\ben (\d+|una|un) semanas?\b/))return ymd(addDays(t,7*(isNaN(m[1])?1:+m[1])));
+const adj=(mi,dd,y,exp)=>{let d=mk(y||t.getFullYear(),mi,dd);if(!exp){if(fut&&d<t)d=mk(d.getFullYear()+1,mi,dd);if(!fut&&d>t)d=mk(d.getFullYear()-1,mi,dd)}return ymd(d)};
+if(m=B(new RegExp('\\b(\\d{1,2})\\s*(?:de\\s+)?('+MES.join('|')+')(?:\\s+(?:de\\s+)?(\\d{4}))?\\b')))return adj(MES.indexOf(m[2]),+m[1],m[3]?+m[3]:0,!!m[3]);
+if(m=B(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/)){const y=m[3]?(+m[3]<100?2000+ +m[3]:+m[3]):0;return adj(+m[2]-1,+m[1],y,!!m[3])}
+if(m=B(new RegExp('\\b(?:el |este |proximo |pasado )?('+DIA.join('|')+')\\b'))){const w=DIA.indexOf(m[1]);const diff=fut?((w-t.getDay()+7)%7||7):-((t.getDay()-w+7)%7||7);return ymd(addDays(t,diff))}
+const dre=/\b(?:el dia|dia|el|para el|hasta el|antes del)\s+(\d{1,2})\b/,r=dre.exec(ctx.n);
+if(r&&+r[1]>=1&&+r[1]<=31){blank(ctx,dre);const dd=+r[1];let d=mk(t.getFullYear(),t.getMonth(),dd);if(fut&&d<t)d=mk(t.getFullYear(),t.getMonth()+1,dd);if(!fut&&d>t)d=mk(t.getFullYear(),t.getMonth()-1,dd);return ymd(d)}
+return null}
+function getAmount(ctx){const m=/\$?\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:[.,]\d+)?)\s*(mil\b|k\b)?/.exec(ctx.n);if(!m)return 0;
+const a=m.index,b=a+m[0].length,sp=' '.repeat(b-a);ctx.n=ctx.n.slice(0,a)+sp+ctx.n.slice(b);ctx.o=ctx.o.slice(0,a)+sp+ctx.o.slice(b);
+let s=m[1];s=/,\d{3}/.test(s)?s.replace(/,/g,''):s.replace(',','.');let v=parseFloat(s);if(m[2])v*=1000;return Math.round(v*100)/100}
+const VERB=new Set('hoy ayer manana gane gaste pague compre cobre vendi recibi ingrese debo pagar vence vencen toca tengo ya dolares dolar usd'.split(' ')),EDGE=new Set('de del en por para la el los las un una mi mis y con a que tambien al lo se me'.split(' '));
+function cleanDesc(ctx){blank(ctx,/\b(tengo que pagar|tengo que|debo pagar|toca pagar|hay que pagar|me pagaron|me depositaron|me dieron|me cobraron|me entro|ya pague)\b/);
+const cl=s=>s.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,''),nt=ctx.n.split(/\s+/),ot=ctx.o.split(/\s+/);let k=[];
+nt.forEach((w,i)=>{const c=cl(w);if(c&&!VERB.has(c))k.push([c,cl(ot[i])])});
+while(k.length&&EDGE.has(k[0][0]))k.shift();while(k.length&&EDGE.has(k[k.length-1][0]))k.pop();
+const d=k.map(x=>x[1]).join(' ');return d.charAt(0).toUpperCase()+d.slice(1)}
+const inP=(d,p)=>p==='all'||(p==='week'?d>=ymd(addDays(today(),-6)):d.slice(0,7)===ymd(today()).slice(0,7));
+const sumP=(t,p)=>S.tx.filter(x=>x.type===t&&inP(x.date,p)).reduce((s,x)=>s+x.amt,0);
+const bal=()=>sumP('in','all')-sumP('out','all');
+const pend=()=>S.bills.filter(b=>!b.paid);
+const pendSum=()=>pend().reduce((s,b)=>s+b.amt,0);
+const matchBill=(b,n)=>norm(b.desc).split(/\s+/).some(w=>w.length>2&&n.includes(w))||(b.cat!=='Otros'&&catOf(n,'out')===b.cat);
+function clause(c){const ctx={o:c,n:norm(c)},n0=ctx.n;
+const type=OUT.test(n0)?'out':IN.test(n0)?'in':BILL.test(n0)?'bill':null;if(!type)return{bad:c};
+const date=getDate(ctx,type==='bill'),amt=getAmount(ctx),cat=catOf(n0,type);let d=cleanDesc(ctx);
+if(type==='out'&&/\bya\b/.test(n0)){const b=pend().find(b=>matchBill(b,n0));if(b){b.paid=true;const t={id:uid(),type:'out',amt:amt||b.amt,desc:b.desc,cat:b.cat,date:date||ymd(today())};S.tx.push(t);S.last.push({k:'tx',id:t.id},{k:'bpay',id:b.id});return{line:`Listo, marqué como pagado: ${b.desc} (${money(t.amt)}).`,tx:1}}}
+if(!amt)return{bad:c,why:1};
+if(!d)d=cat==='Otros'?(type==='in'?'Ingreso':'Gasto'):cat;
+if(type==='bill'){const b={id:uid(),amt,desc:d,cat,due:date,paid:false};S.bills.push(b);S.last.push({k:'bills',id:b.id});
+return{line:`Pendiente: pagar ${money(amt)} de ${d}`+(date?` el ${fmt(date)} (${rel(date)})`:' (sin fecha)')+'.'}}
+const t={id:uid(),type,amt,desc:d,cat,date:date||ymd(today())};S.tx.push(t);S.last.push({k:'tx',id:t.id});
+return{line:(type==='in'?'Ingreso anotado: +':'Gasto anotado: −')+money(amt)+` · ${d} · ${cat} · ${rel(t.date)}`,tx:1}}
+function splitClauses(o){const n=norm(o),V='gane|gaste|pague|compre|cobre|vendi|debo|tengo que|me pagaron|recibi|ya pague';
+const re=new RegExp('\\s*;\\s*|\\.\\s+|,?\\s+(?:y|pero)\\s+(?=(?:tambien\\s+)?(?:'+V+')\\b)|,\\s*(?=(?:'+V+')\\b)','g');
+const out=[];let last=0,m;while((m=re.exec(n))){out.push(o.slice(last,m.index));last=m.index+m[0].length}out.push(o.slice(last));return out.filter(s=>s.trim())}
+function processMsg(o){S.last=[];const lines=[],bad=[];let added=0;
+for(const c of splitClauses(o)){const r=clause(c);if(r.line){lines.push(r.line);if(r.tx)added=1}else bad.push(r)}
+if(!lines.length)return bad.some(b=>b.why)?'Vi que quieres anotar algo pero no encontré el monto. Dime así: “gasté 15 en almuerzo”.':HELP_SHORT;
+let out=lines.join('\n');if(bad.length)out+=`\n(No pude leer: “${bad.map(b=>b.bad.trim()).join('”, “')}”)`;
+if(added)out+=`\nSaldo: ${money(bal())} · Libre tras pagar pendientes: ${money(bal()-pendSum())}`;return out}
+const HELP_SHORT='No te entendí del todo. Prueba con:\n• Hoy gané 120\n• Gasté 15 en almuerzo\n• Tengo que pagar 50 de luz el viernes\nEscribe “ayuda” para ver más.';
+const HELP='Escríbeme normal, como a un asistente:\n• Hoy gané 120 de ventas\n• Gasté 15 en almuerzo ayer\n• Tengo que pagar 50 de luz el viernes\n• Debo pagar 300 de renta el 1\n• Ya pagué la luz\n\nPuedes juntar varias cosas: “hoy gané 80 y gasté 20 en gasolina”.\nComandos: “resumen”, “qué debo”, “borrar último”.\nLo que dices con montos y fechas ($, “mil”, “mañana”, “el 15”, “el viernes”, “15 de diciembre”) lo entiendo.';
+function summaryText(){const inc=sumP('in','month'),exp=sumP('out','month'),by={};S.tx.filter(x=>x.type==='out'&&inP(x.date,'month')).forEach(x=>by[x.cat]=(by[x.cat]||0)+x.amt);
+const top=Object.entries(by).sort((a,b)=>b[1]-a[1])[0];
+return`Resumen de ${MES[today().getMonth()]}:\nIngresos: ${money(inc)}\nGastos: ${money(exp)}\nBalance del mes: ${money(inc-exp)}\nSaldo total: ${money(bal())}\nPor pagar: ${money(pendSum())}\nLibre tras pagar todo: ${money(bal()-pendSum())}`+(top?`\nLo que más se te va: ${top[0]} (${Math.round(top[1]/exp*100)}%).`:'')}
+function pendingText(){const p=pend().sort((a,b)=>(a.due||'9')<(b.due||'9')?-1:1);if(!p.length)return'No tienes pagos pendientes. 🎉';
+return p.map(b=>`• ${b.desc} ${money(b.amt)} — `+(b.due?`${fmt(b.due)} (${rel(b.due)})`:'sin fecha')).join('\n')+`\nTotal: ${money(pendSum())}`}
+function undo(){if(!S.last.length)return'No hay nada que deshacer.';
+for(const l of S.last){if(l.k==='tx')S.tx=S.tx.filter(x=>x.id!==l.id);else if(l.k==='bills')S.bills=S.bills.filter(x=>x.id!==l.id);else{const b=S.bills.find(x=>x.id===l.id);if(b)b.paid=false}}
+S.last=[];return'Listo, deshice lo último.'}
+function say(w,t){S.chat.push({w,t});if(S.chat.length>80)S.chat.shift()}
+function handle(raw){const o=raw.trim().normalize('NFC');if(!o)return;say('u',o);const n=norm(o),dg=/\d/.test(n);let r;
+if(/^(ayuda|help|\?|como funciona)/.test(n))r=HELP;
+else if(/(borra|elimina|deshaz|deshacer|quita|cancela).*(ultim)/.test(n))r=undo();
+else if(/(resumen|balance|como voy|cuanto tengo|cuanto llevo)/.test(n)&&!dg)r=summaryText();
+else if(/(que debo|pendientes|que tengo que pagar|proximos pagos|deudas|que me toca)/.test(n)&&!dg)r=pendingText();
+else if(AI.on){aiMsg(o);return}else r=processMsg(o);say('b',r);save();render()}
+const MODELS=['Qwen2.5-1.5B-Instruct-q4f16_1-MLC','Qwen2.5-0.5B-Instruct-q4f16_1-MLC'];
+const CATS='Comida|Transporte|Vivienda|Servicios|Deudas|Negocio|Salud|Compras|Ocio|Ventas|Trabajo|Otros';
+const AI={on:false,eng:null,busy:false};
+try{AI.on=localStorage.getItem('mc_ai')==='1'}catch(e){}
+const stat=t=>{$('#aistat').textContent=t};
+const setAI=()=>{$('#aibtn').textContent='🧠 IA: '+(AI.on?'on':'off')};
+async function aiLoad(){
+if(AI.eng)return true;
+if(!navigator.gpu)return false;
+const w=await import('https://esm.run/@mlc-ai/web-llm@0.2');
+for(const m of MODELS){try{stat('Cargando IA…');AI.eng=await w.CreateMLCEngine(m,{initProgressCallback:p=>stat('IA '+Math.round((p.progress||0)*100)+'% · '+String(p.text||'').slice(0,50))});stat('');return true}catch(e){AI.eng=null}}
+stat('');return false}
+async function aiToggle(){
+if(AI.busy)return;AI.on=!AI.on;try{localStorage.setItem('mc_ai',AI.on?'1':'0')}catch(e){}setAI();
+if(!AI.on)return;
+AI.busy=true;const ok=await aiLoad().catch(()=>false);AI.busy=false;
+if(ok)say('b','IA local lista. Ya puedes escribirme normal, y después de esta primera descarga funciona sin internet.');
+else{AI.on=false;setAI();try{localStorage.setItem('mc_ai','0')}catch(e){}say('b','No pude cargar la IA local. Hace falta internet la primera vez (el modelo pesa cerca de 1 GB) y un navegador con WebGPU. Sigo con el modo básico.')}
+save();render()}
+async function aiMsg(o){
+if(AI.busy)return;AI.busy=true;stat('Pensando…');let r;
+try{if(!/\bya pague\b/.test(norm(o))&&await aiLoad()){
+const t=today();
+const sys=`Eres el intérprete de una app de gastos personales en El Salvador (dólares). Hoy es ${ymd(t)} (${DIA[t.getDay()]}). Responde SOLO con un JSON válido, sin texto extra: {"items":[{"type":"in|out|bill","amount":0,"desc":"texto corto","category":"${CATS}","date":"YYYY-MM-DD"}],"answer":""}. type: in=ingreso (gané, cobré, vendí), out=gasto ya hecho, bill=pago pendiente por pagar. date: fecha del movimiento o de vencimiento, resolviendo hoy, mañana, el viernes, el 15; null si no hay. Un mensaje puede traer varios items. Si el usuario solo pregunta algo, deja items vacío y responde en "answer" en español informal y corto usando estos datos:\n${summaryText()}\n${pendingText()}`;
+const res=await AI.eng.chat.completions.create({messages:[{role:'system',content:sys},{role:'user',content:o}],temperature:0.1,max_tokens:400});
+const j=JSON.parse(/\{[\s\S]*\}/.exec(res.choices[0].message.content)[0]);
+const items=(j.items||[]).map(i=>({type:i.type,amt:Math.round(+i.amount*100)/100,desc:String(i.desc||'').trim(),cat:i.category,date:/^\d{4}-\d{2}-\d{2}$/.test(i.date)?i.date:null}));
+if(items.length){
+if(items.some(i=>!['in','out','bill'].includes(i.type)||!(i.amt>0)))throw 0;
+S.last=[];const ls=[];let added=0;
+for(const i of items){
+const ds=norm(i.desc),isIn=i.type==='in',okc=CATS.split('|').includes(i.cat);
+const cat=isIn?(['Ventas','Trabajo'].includes(i.cat)?i.cat:catOf(ds,'in')):(okc&&!['Ventas','Trabajo'].includes(i.cat)?i.cat:catOf(ds,'out'));
+const d=i.desc?i.desc[0].toUpperCase()+i.desc.slice(1):cat;
+if(i.type==='bill'){const b={id:uid(),amt:i.amt,desc:d,cat,due:i.date,paid:false};S.bills.push(b);S.last.push({k:'bills',id:b.id});
+ls.push(`Pendiente: pagar ${money(i.amt)} de ${d}`+(i.date?` el ${fmt(i.date)} (${rel(i.date)})`:' (sin fecha)')+'.')}
+else{const x={id:uid(),type:i.type,amt:i.amt,desc:d,cat,date:i.date||ymd(t)};S.tx.push(x);S.last.push({k:'tx',id:x.id});added=1;
+ls.push((isIn?'Ingreso anotado: +':'Gasto anotado: −')+money(i.amt)+` · ${d} · ${cat} · ${rel(x.date)}`)}}
+r=ls.join('\n')+(added?`\nSaldo: ${money(bal())} · Libre tras pagar pendientes: ${money(bal()-pendSum())}`:'')}
+else if(typeof j.answer==='string'&&j.answer.trim())r=j.answer.trim();
+}}catch(e){r=null}
+if(!r)r=processMsg(o);
+say('b',r);save();render();stat('');AI.busy=false}
+function donut(){const by={};S.tx.filter(x=>x.type==='out'&&inP(x.date,per)).forEach(x=>by[x.cat]=(by[x.cat]||0)+x.amt);
+const e=Object.entries(by).sort((a,b)=>b[1]-a[1]),tot=e.reduce((s,x)=>s+x[1],0);if(!tot)return'<p class="mut">Aún no hay gastos en este periodo.</p>';
+let off=25,sg='',lg='';for(const [k,v] of e){const pc=v/tot*100;sg+=`<circle r="15.9155" cx="21" cy="21" fill="none" stroke="${CAT[k]||'#94a3b8'}" stroke-width="6" stroke-dasharray="${pc} ${100-pc}" stroke-dashoffset="${off}"/>`;off-=pc;lg+=`<span><i class="dot" style="background:${CAT[k]||'#94a3b8'}"></i>${esc(k)} ${money(v)} (${Math.round(pc)}%)</span>`}
+return`<div style="text-align:center"><svg viewBox="0 0 42 42" width="170" height="170" style="color:var(--tx)">${sg}<text x="21" y="22.4" text-anchor="middle" font-size="4.4" font-weight="700" fill="currentColor">${money(tot)}</text></svg></div><div class="leg">${lg}</div>`}
+function bars(){const dy=[];for(let i=6;i>=0;i--){const d=addDays(today(),-i),k=ymd(d),f=t=>S.tx.filter(x=>x.type===t&&x.date===k).reduce((s,x)=>s+x.amt,0);dy.push({l:DS[d.getDay()][0].toUpperCase(),i:f('in'),o:f('out')})}
+const mx=Math.max(1,...dy.flatMap(d=>[d.i,d.o])),H=105,W=320,bw=15;let s=`<line x1="0" x2="${W}" y1="${H+10}" y2="${H+10}" style="stroke:var(--line)"/>`;
+dy.forEach((d,j)=>{const x=j*(W/7)+(W/7-2*bw-3)/2,hi=d.i/mx*H,ho=d.o/mx*H;
+s+=`<rect x="${x}" y="${H+10-hi}" width="${bw}" height="${hi}" rx="3" style="fill:var(--acc)"/><rect x="${x+bw+3}" y="${H+10-ho}" width="${bw}" height="${ho}" rx="3" style="fill:var(--red)"/><text x="${x+bw+1.5}" y="${H+26}" text-anchor="middle" font-size="11" style="fill:var(--mut)">${d.l}</text>`});
+return`<svg viewBox="0 0 ${W} ${H+32}" width="100%">${s}</svg><div class="leg"><span><i class="dot" style="background:var(--acc)"></i>Ingresos</span><span><i class="dot" style="background:var(--red)"></i>Gastos</span><span class="mut">máx. ${money(mx)}</span></div>`}
+function vChat(){const m=S.chat.length?S.chat:[{w:'b',t:'¡Hola! Soy tu asistente de cuentas. Cuéntame lo que ganaste, gastaste o tienes que pagar y yo lo llevo.\n\n'+HELP}];
+return m.map(x=>`<div class="b ${x.w==='u'?'u':'a'}">${esc(x.t)}</div>`).join('')}
+function vRes(){const inc=sumP('in',per),exp=sumP('out',per),b=bal(),p=pendSum(),od=pend().filter(x=>x.due&&x.due<ymd(today())).reduce((s,x)=>s+x.amt,0);
+const rc=S.tx.slice().sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0).slice(0,10);
+return`<div class="seg">${[['week','7 días'],['month','Mes'],['all','Todo']].map(x=>`<button data-a="per" data-t="${x[0]}" class="${per===x[0]?'on':''}">${x[1]}</button>`).join('')}</div>
+<div class="grid"><div class="card"><div class="k">Ingresos</div><div class="v g">${money(inc)}</div></div><div class="card"><div class="k">Gastos</div><div class="v r">${money(exp)}</div></div>
+<div class="card"><div class="k">Balance del periodo</div><div class="v ${inc-exp<0?'r':''}">${money(inc-exp)}</div></div><div class="card"><div class="k">Por pagar</div><div class="v" style="color:var(--amb)">${money(p)}</div>${od?`<div class="k r">${money(od)} vencido</div>`:''}</div></div>
+<div class="card"><div class="k">Saldo total</div><div class="v ${b<0?'r':''}">${money(b)}</div><div class="k">Libre tras pagar pendientes: <b class="${b-p<0?'r':'g'}">${money(b-p)}</b></div></div>
+<div class="card"><h2>Gastos por categoría</h2>${donut()}</div>
+<div class="card"><h2>Últimos 7 días</h2><div class="wrap">${bars()}</div></div>
+<div class="card"><h2>Movimientos recientes</h2>${rc.length?rc.map(x=>`<div class="li"><div class="t"><b>${esc(x.desc)}</b><span class="k">${fmt(x.date)} · ${esc(x.cat)}</span></div><b class="${x.type==='in'?'g':'r'}">${x.type==='in'?'+':'−'}${money(x.amt)}</b><button class="sm" data-a="dtx" data-t="${x.id}">✕</button></div>`).join(''):'<p class="mut">Sin movimientos todavía.</p>'}</div>
+<button class="sm" data-a="reset" style="width:100%;padding:10px">${resetArm?'¿Seguro? Toca otra vez para borrar todo':'Borrar todos mis datos'}</button>`}
+function vPend(){const p=pend().sort((a,b)=>(a.due||'9')<(b.due||'9')?-1:1),t=ymd(today());
+return`<div class="card"><h2>Pagos pendientes · ${money(pendSum())}</h2>${p.length?p.map(b=>{const od=b.due&&b.due<t,c=od?'r':b.due===t?'':'mut';return`<div class="li"><div class="t"><b>${esc(b.desc)}</b><span class="k ${c}">${b.due?fmt(b.due)+' · '+rel(b.due):'sin fecha'}</span></div><b>${money(b.amt)}</b><button class="sm" data-a="pay" data-t="${b.id}">Pagado</button><button class="sm" data-a="dbill" data-t="${b.id}">✕</button></div>`}).join(''):'<p class="mut">Nada pendiente. Escribe en el chat: “tengo que pagar 50 de luz el viernes”.</p>'}</div>`}
+function render(){const m=$('#main');$('#sal').textContent='Saldo '+money(bal());$('#sal').className=bal()<0?'r':'g';
+m.innerHTML=view==='chat'?vChat():view==='res'?vRes():vPend();$('#comp').style.display=view==='chat'?'':'none';
+if(view==='chat')m.scrollTop=m.scrollHeight;
+const n=pend().length;$('#nav').innerHTML=[['chat','💬 Chat'],['res','📊 Resumen'],['pend','🗓️ Pendientes'+(n?' ('+n+')':'')]].map(x=>`<button data-a="tab" data-t="${x[0]}" class="${view===x[0]?'on':''}">${x[1]}</button>`).join('')}
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el)return;const a=el.dataset.a,t=el.dataset.t,inp=$('#inp');
+if(a!=='reset')resetArm=false;
+if(a==='ai')aiToggle();
+else if(a==='tab'){view=t;render()}
+else if(a==='per'){per=t;render()}
+else if(a==='send'){handle(inp.value);inp.value=''}
+else if(a==='send2'){handle(t)}
+else if(a==='chip'){inp.value=t.replace('  ',' ');inp.focus()}
+else if(a==='dtx'){S.tx=S.tx.filter(x=>x.id!==t);save();render()}
+else if(a==='dbill'){S.bills=S.bills.filter(x=>x.id!==t);save();render()}
+else if(a==='pay'){const b=S.bills.find(x=>x.id===t);if(b){b.paid=true;S.tx.push({id:uid(),type:'out',amt:b.amt,desc:b.desc,cat:b.cat,date:ymd(today())});save();render()}}
+else if(a==='reset'){if(resetArm){S={tx:[],bills:[],chat:[],last:[]};resetArm=false;save()}else resetArm=true;render()}});
+$('#inp').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();handle(e.target.value);e.target.value=''}});
+render();setAI();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script></body></html>
