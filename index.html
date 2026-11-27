@@ -83,24 +83,50 @@ const catOf=(n,t)=>{if(t==='in')return/vend|venta|cliente/.test(n)?'Ventas':/tra
 const OUT=/\b(pague|gaste|compre|abono|abone|me cobraron|se me fue)\b/,IN=/\b(gane|ganancia|cobre|me pagaron|vendi|ingrese|recibi|me depositaron|me dieron|me entro)\b/,BILL=/\b(tengo que|debo|pagar|vence|vencen|toca|hay que|pendiente)\b/;
 function blank(ctx,re){re=new RegExp(re.source,'g');const ms=[];let m;while((m=re.exec(ctx.n))){ms.push(m);if(!m[0].length)re.lastIndex++}
 for(const m of ms){const a=m.index,b=a+m[0].length,sp=' '.repeat(b-a);ctx.n=ctx.n.slice(0,a)+sp+ctx.n.slice(b);ctx.o=ctx.o.slice(0,a)+sp+ctx.o.slice(b)}return ms}
-function getDate(ctx,fut){const t=today();let m;const B=re=>blank(ctx,re)[0];
-if(B(/\bpasado manana\b/))return ymd(addDays(t,2));
-if(B(/\bmanana\b/))return ymd(addDays(t,1));
-if(B(/\bhoy\b/))return ymd(t);
-if(B(/\bayer\b/))return ymd(addDays(t,-1));
-if(m=B(/\ben (\d+) dias?\b/))return ymd(addDays(t,+m[1]));
-if(m=B(/\ben (\d+|una|un) semanas?\b/))return ymd(addDays(t,7*(isNaN(m[1])?1:+m[1])));
-const adj=(mi,dd,y,exp)=>{let d=mk(y||t.getFullYear(),mi,dd);if(!exp){if(fut&&d<t)d=mk(d.getFullYear()+1,mi,dd);if(!fut&&d>t)d=mk(d.getFullYear()-1,mi,dd)}return ymd(d)};
-if(m=B(new RegExp('\\b(\\d{1,2})\\s*(?:de\\s+)?('+MES.join('|')+')(?:\\s+(?:de\\s+)?(\\d{4}))?\\b')))return adj(MES.indexOf(m[2]),+m[1],m[3]?+m[3]:0,!!m[3]);
-if(m=B(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/)){const y=m[3]?(+m[3]<100?2000+ +m[3]:+m[3]):0;return adj(+m[2]-1,+m[1],y,!!m[3])}
-if(m=B(new RegExp('\\b(?:el |este |proximo |pasado )?('+DIA.join('|')+')\\b'))){const w=DIA.indexOf(m[1]);const diff=fut?((w-t.getDay()+7)%7||7):-((t.getDay()-w+7)%7||7);return ymd(addDays(t,diff))}
-const dre=/\b(?:el dia|dia|el|para el|hasta el|antes del)\s+(\d{1,2})\b/,r=dre.exec(ctx.n);
-if(r&&+r[1]>=1&&+r[1]<=31){blank(ctx,dre);const dd=+r[1];let d=mk(t.getFullYear(),t.getMonth(),dd);if(fut&&d<t)d=mk(t.getFullYear(),t.getMonth()+1,dd);if(!fut&&d>t)d=mk(t.getFullYear(),t.getMonth()-1,dd);return ymd(d)}
+const NW={un:1,uno:1,una:1,primero:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,dieciseis:16,diecisiete:17,dieciocho:18,diecinueve:19,veinte:20,veintiuno:21,veintidos:22,veintitres:23,veinticuatro:24,veinticinco:25,veintiseis:26,veintisiete:27,veintiocho:28,veintinueve:29,treinta:30};
+const NUMR='(\\d{1,2}|'+Object.keys(NW).sort((a,b)=>b.length-a.length).join('|')+')',ORDR='(?:ro|er|do|to|vo|mo|th|st|nd|rd|°|º)?';
+const nv=s=>/^\d+$/.test(s)?+s:NW[s];
+const MONR=MES.join('|')+'|sept|set|ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic';
+const monIdx=s=>{s=s==='set'||s==='sept'?'sep':s;return MES.findIndex(x=>x.startsWith(s.slice(0,3)))};
+const lev=(a,b)=>{if(Math.abs(a.length-b.length)>1)return 9;const d=[];for(let i=0;i<=a.length;i++)d[i]=[i];for(let j=1;j<=b.length;j++)d[0][j]=j;
+for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[a.length][b.length]};
+function fixTypos(ctx){const D=MES.concat(DIA,['proximo','proxima','semana','siguiente']),rs=[],re=/[a-z]{6,}/g;let m;
+while((m=re.exec(ctx.n))){if(D.includes(m[0]))continue;const c=D.find(w=>w.length>=6&&lev(m[0],w)<=1);if(c)rs.push([m.index,m[0].length,c])}
+for(const [a,l,c] of rs.reverse()){ctx.n=ctx.n.slice(0,a)+c+ctx.n.slice(a+l);ctx.o=ctx.o.slice(0,a)+c+ctx.o.slice(a+l)}}
+function getDate(ctx,fut){fixTypos(ctx);const t=today(),Y=ymd,y0=t.getFullYear(),m0=t.getMonth(),td=t.getDay();
+const shift=(n,u)=>Y(u[0]==='d'?addDays(t,n):u[0]==='s'?addDays(t,7*n):mk(y0,m0+n,t.getDate()));
+const adjM=(mi,d,y)=>{if(y)return Y(mk(+y,mi,d));let x=mk(y0,mi,d);if(fut&&x<t)x=mk(y0+1,mi,d);if(!fut&&x>t)x=mk(y0-1,mi,d);return Y(x)};
+const adjD=d=>{let x=mk(y0,m0,d);if(fut&&x<t)x=mk(y0,m0+1,d);if(!fut&&x>t)x=mk(y0,m0-1,d);return Y(x)};
+const wd=w=>Y(addDays(t,fut?((w-td+7)%7||7):-((td-w+7)%7||7)));
+const W=[
+[/\b(?:esta manana|esta noche|esta tarde|hoy mismo|hoy|ahorita|ahora)\b/,()=>Y(t)],
+[/\b(?:anteayer|antier|anteanoche)\b/,()=>Y(addDays(t,-2))],
+[/\b(?:ayer|anoche)\b/,()=>Y(addDays(t,-1))],
+[/\bpasado manana\b/,()=>Y(addDays(t,2))],
+[/\bmanana\b/,()=>Y(addDays(t,1))]];
+const S=[
+[new RegExp('\\bhace\\s+'+NUMR+'\\s+(dias?|semanas?|meses|mes)\\b'),r=>shift(-nv(r[1]),r[2])],
+[new RegExp('\\b(?:en|dentro de|de aqui a)\\s+'+NUMR+'\\s+(dias?|semanas?|meses|mes)\\b'),r=>shift(nv(r[1]),r[2])],
+[new RegExp('\\b(?:el\\s+)?('+DIA.join('|')+')\\s+(?:de|en|para)\\s+la\\s+(?:otra|proxima|siguiente|prox)\\s+semana\\b'),r=>Y(addDays(t,-((td+6)%7)+7+((DIA.indexOf(r[1])+6)%7)))],
+[/\b(?:la\s+)?(?:proxima|prox|otra|siguiente)\s+semana\b|\bla semana que viene\b|\bsemana entrante\b/,()=>Y(addDays(t,7))],
+[/\b(?:el\s+)?(?:proximo mes|prox mes|mes que viene|mes entrante)\b/,()=>shift(1,'m')],
+[/\b(?:fin|final|fines)\s+(?:de|del)\s+mes\b|\bultimo dia\s+(?:de|del)\s+mes\b/,()=>Y(mk(y0,m0+(fut||mk(y0,m0,31)<=t?0:-1),31))],
+[/\bmediados\s+(?:de|del)\s+mes\b|\bmitad\s+(?:de|del)\s+mes\b/,()=>adjD(15)],
+[/\b(?:fin de\s+)?quincena\b/,()=>fut?(td<=15&&t.getDate()<=15?adjD(15):Y(mk(y0,m0,31))):(t.getDate()>=15?adjD(15):Y(mk(y0,m0-1,31)))],
+[/\b(?:este\s+)?(?:fin de semana|finde)\b/,()=>wd(6)],
+[new RegExp('\\b'+NUMR+ORDR+'\\s*(?:de\\s+|del\\s+|[\\-\\/]\\s*)?('+MONR+')\\.?(?:\\s*(?:de\\s+|del\\s+|,\\s*)?(\\d{4}))?\\b'),r=>{const d=nv(r[1]);return d>=1&&d<=31?adjM(monIdx(r[2]),d,r[3]):null}],
+[new RegExp('\\b('+MONR+')\\.?\\s+(\\d{1,2})(?!\\d)(?:\\s*,?\\s*(\\d{4}))?\\b'),r=>+r[2]>=1&&+r[2]<=31?adjM(monIdx(r[1]),+r[2],r[3]):null],
+[/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/,r=>{let d=+r[1],mo=+r[2];if(mo>12&&d<=12)[d,mo]=[mo,d];if(mo<1||mo>12||d<1||d>31)return null;return adjM(mo-1,d,r[3]?(+r[3]<100?2000+ +r[3]:+r[3]):0)}],
+[new RegExp('\\b(?:(este|esta|proximo|prox|pasado|el proximo|el pasado|el|para el)\\s+)?('+DIA.join('|')+')(?:\\s+(pasado|que viene|proximo|prox|siguiente))?\\b'),r=>{const w=DIA.indexOf(r[2]),mod=(r[1]||'')+' '+(r[3]||'');
+if(/pasado/.test(mod))return Y(addDays(t,-((td-w+7)%7||7)));if(/prox|que viene|siguiente/.test(mod))return Y(addDays(t,(w-td+7)%7||7));if(/este|esta/.test(mod))return Y(addDays(t,(w-td+7)%7));return wd(w)}],
+[/\bel\s+(lun|mie|mier|jue|vie|sab|dom)\b/,r=>wd({lun:1,mie:3,mier:3,jue:4,vie:5,sab:6,dom:0}[r[1]])],
+[new RegExp('\\b(?:el dia|dia|el|para el|hasta el|antes del|los|todos los)\\s+'+NUMR+ORDR+'(?:\\s+dia)?\\b(?!\\s*(?:dolar|usd|\\$|mil\\b|k\\b|%))'),r=>{const d=nv(r[1]);return d>=1&&d<=31?adjD(d):null}]];
+for(const [re,fn] of (fut?S.concat(W):W.concat(S))){const r=re.exec(ctx.n);if(!r)continue;const v=fn(r);if(v!=null){blank(ctx,re);return v}}
 return null}
 function getAmount(ctx){const m=/\$?\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:[.,]\d+)?)\s*(mil\b|k\b)?/.exec(ctx.n);if(!m)return 0;
 const a=m.index,b=a+m[0].length,sp=' '.repeat(b-a);ctx.n=ctx.n.slice(0,a)+sp+ctx.n.slice(b);ctx.o=ctx.o.slice(0,a)+sp+ctx.o.slice(b);
 let s=m[1];s=/,\d{3}/.test(s)?s.replace(/,/g,''):s.replace(',','.');let v=parseFloat(s);if(m[2])v*=1000;return Math.round(v*100)/100}
-const VERB=new Set('hoy ayer manana gane gaste pague compre cobre vendi recibi ingrese debo pagar vence vencen toca tengo ya dolares dolar usd'.split(' ')),EDGE=new Set('de del en por para la el los las un una mi mis y con a que tambien al lo se me'.split(' '));
+const VERB=new Set('hoy ayer manana ahora ahorita anoche antier abono abone liquide salde cancele completo completa gane gaste pague compre cobre vendi recibi ingrese debo pagar vence vencen toca tengo ya dolares dolar usd'.split(' ')),EDGE=new Set('de del en por para la el los las un una mi mis y con a que tambien al lo se me'.split(' '));
 function cleanDesc(ctx){blank(ctx,/\b(tengo que pagar|tengo que|debo pagar|toca pagar|hay que pagar|me pagaron|me depositaron|me dieron|me cobraron|me entro|ya pague)\b/);
 const cl=s=>s.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,''),nt=ctx.n.split(/\s+/),ot=ctx.o.split(/\s+/);let k=[];
 nt.forEach((w,i)=>{const c=cl(w);if(c&&!VERB.has(c))k.push([c,cl(ot[i])])});
@@ -117,14 +143,11 @@ if(isDebtDef(n0)){const r=debtDef(ctx,n0);if(r)return r}
 const type=OUT.test(n0)?'out':IN.test(n0)?'in':BILL.test(n0)?'bill':null;if(!type)return{bad:c};
 const rec=type==='bill'?getRec(ctx):null,cap=type==='bill'?getCap(ctx):null;
 const date=getDate(ctx,type==='bill'),amt=getAmount(ctx),cat=catOf(n0,type);let d=cleanDesc(ctx);
-if(type==='out'&&/\bya\b/.test(n0)){const b=pend().find(b=>matchBill(b,n0));if(b){b.paid=true;const t={id:uid(),type:'out',amt:amt||b.amt,desc:b.desc,cat:b.cat,date:date||ymd(today())};S.tx.push(t);S.last.push({k:'tx',id:t.id},{k:'bpay',id:b.id});nextBill(b);return{line:`Listo, marqué como pagado: ${b.desc} (${money(t.amt)}).`,tx:1}}}
-if(type==='out'){const ds=matchDebts(n0),a=amt||(ds.length===1&&ds[0].min)||0;
-if(ds.length>1&&a)return{line:'¿A cuál deuda va ese abono? Tienes: '+ds.map(x=>x.name).join(', ')+'. Dímelo con el nombre.'};
-if(ds.length===1&&a)return payDebt(ds[0],a,date||ymd(today()))}
+if(type==='out'){const r=payTarget(n0,d,amt,date);if(r)return r}
 if(!amt)return{bad:c,why:1};
 if(!d)d=cat==='Otros'?(type==='in'?'Ingreso':'Gasto'):cat;
 if(type==='bill'){const b={id:uid(),amt,desc:d,cat,due:date,paid:false,rec,cap};S.bills.push(b);S.last.push({k:'bills',id:b.id});
-return{line:`Pendiente: pagar ${money(amt)} de ${d}`+(date?` el ${fmt(date)} (${rel(date)})`:' (sin fecha)')+(rec?', '+recTxt(rec):'')+(cap!=null?`, capital pendiente ${money(cap)}`:'')+'.'}}
+return{line:`Pendiente: pagar ${money(amt)} de ${d}`+(date?` el ${fmt(date)} (${rel(date)})`:' (sin fecha: no la entendí; escribe “el 15”, “el viernes” o “fin de mes”)')+(rec?', '+recTxt(rec):'')+(cap!=null?`, capital pendiente ${money(cap)}`:'')+'.'}}
 const t={id:uid(),type,amt,desc:d,cat,date:date||ymd(today())};S.tx.push(t);S.last.push({k:'tx',id:t.id});
 return{line:(type==='in'?'Ingreso anotado: +':'Gasto anotado: −')+money(amt)+` · ${d} · ${cat} · ${rel(t.date)}`,tx:1}}
 function splitClauses(o){const n=norm(o),V='gane|gaste|pague|abono|abone|compre|cobre|vendi|debo|tengo que|me pagaron|recibi|ya pague';
@@ -145,14 +168,14 @@ function pendingText(){const dt=debtsText(),p=pend().length?pendingBills():'';re
 function pendingBills(){const p=pend().sort((a,b)=>(a.due||'9')<(b.due||'9')?-1:1);if(!p.length)return'No tienes pagos pendientes. 🎉';
 return p.map(b=>`• ${b.desc} ${money(b.amt)} — `+(b.due?`${fmt(b.due)} (${rel(b.due)})`:'sin fecha')).join('\n')+`\nTotal: ${money(pendSum())}`}
 function undo(){if(!S.last.length)return'No hay nada que deshacer.';
-for(const l of S.last){if(l.k==='tx')S.tx=S.tx.filter(x=>x.id!==l.id);else if(l.k==='bills')S.bills=S.bills.filter(x=>x.id!==l.id);else if(l.k==='dbal'){const d=S.debts.find(x=>x.id===l.id);if(d){d.bal=l.v;d.due=l.due}}else if(l.k==='debt')S.debts=S.debts.filter(x=>x.id!==l.id);else{const b=S.bills.find(x=>x.id===l.id);if(b)b.paid=false}}
+for(const l of S.last){if(l.k==='tx')S.tx=S.tx.filter(x=>x.id!==l.id);else if(l.k==='bills')S.bills=S.bills.filter(x=>x.id!==l.id);else if(l.k==='dbal'){const d=S.debts.find(x=>x.id===l.id);if(d){d.bal=l.v;d.due=l.due}}else if(l.k==='debt')S.debts=S.debts.filter(x=>x.id!==l.id);else if(l.k==='bamt'){const b=S.bills.find(x=>x.id===l.id);if(b)b.amt=l.v}else{const b=S.bills.find(x=>x.id===l.id);if(b)b.paid=false}}
 S.last=[];return'Listo, deshice lo último.'}
 function say(w,t){S.chat.push({w,t});if(S.chat.length>80)S.chat.shift()}
 function handle(raw){const o=raw.trim().normalize('NFC');if(!o)return;
 const pm=/^pin\s+(\d{4,8})$/i.exec(o);
 if(pm){sha(pm[1]).then(h=>{try{localStorage.setItem('mc_pin',h)}catch(e){}say('b','PIN guardado. La app se bloquea al volver después de 30 segundos. Para quitarlo escribe “quitar pin”.');save();render()});return}
 if(/^quitar pin$/i.test(o)){try{localStorage.removeItem('mc_pin')}catch(e){}say('b','PIN quitado.');save();render();return}
-say('u',o);const n=norm(o),dg=/\d/.test(n);let r;
+say('u',o);if(askReply(o))return;const n=norm(o),dg=/\d/.test(n);let r;
 if(/^(ayuda|help|\?|como funciona)/.test(n))r=HELP;
 else if(/(borra|elimina|deshaz|deshacer|quita|cancela).*(ultim)/.test(n))r=undo();
 else if(/(resumen|balance|como voy|cuanto tengo|cuanto llevo)/.test(n)&&!dg)r=summaryText();
@@ -166,7 +189,7 @@ function getRec(ctx){let m;
 if(m=blank(ctx,/\b(?:cada|every)\s+(\d+)\s*(?:dias?|days?)\b/)[0])return+m[1];
 if(m=blank(ctx,/\b(?:cada|every)\s+(\d+|dos|two)\s*(?:semanas?|weeks?)\b/)[0])return 7*(isNaN(m[1])?2:+m[1]);
 if(blank(ctx,/\b(?:quincenal|biweekly|bi-weekly)\b/)[0])return 14;
-if(blank(ctx,/\b(?:mensual|monthly|cada mes|every month)\b/)[0])return'm';
+if(blank(ctx,/\b(?:mensual|monthly|cada mes|todos los meses|every month)\b/)[0])return'm';
 if(blank(ctx,/\b(?:semanal|weekly|cada semana|every week)\b/)[0])return 7;
 return null}
 function getCap(ctx){const m=blank(ctx,/\bcapital(?: de| total| pendiente)?\s*\$?\s*[\d,]+(?:\.\d+)?/)[0];return m?parseFloat(m[0].replace(/[^\d.]/g,'')):null}
@@ -176,7 +199,7 @@ const x={id:uid(),amt:cap!=null?Math.min(b.amt,cap):b.amt,desc:b.desc,cat:b.cat,
 const GEN=new Set(['tarjeta','deuda','credito','prestamo','cuenta','pago','saldo']);
 const debtTot=()=>S.debts.reduce((s,d)=>s+Math.max(0,d.bal),0);
 const advance=(s,r)=>{const d=fromY(s);return ymd(r==='m'?mk(d.getFullYear(),d.getMonth()+1,d.getDate()):addDays(d,r))};
-const isDebtDef=n=>(/\b(deuda|saldo|balance|capital|adeudo)\b/.test(n)||/\bdebo\s+\$?\d/.test(n))&&!OUT.test(n);
+const isDebtDef=n=>(/\b(deuda|saldo|balance|adeudo)\b|\bcapital\s+(?:de |total |pendiente )?\$?\d/.test(n)||/\bdebo\s+\$?\d/.test(n))&&!OUT.test(n);
 function getMin(ctx){const m=blank(ctx,/\b(?:pago minimo|minimo|cuota(?: de)?|pagos? de|paga)\s*\$?\s*(\d[\d,]*(?:\.\d+)?)/)[0];return m?parseFloat(m[1].replace(/,/g,'')):0}
 function matchDebts(n){let best=[],sc=0;
 for(const d of S.debts.filter(d=>d.bal>0)){const nm=norm(d.name),ws=nm.split(/\s+/).filter(w=>w.length>2&&!GEN.has(w));let s=ws.filter(w=>n.includes(w)).length;
@@ -189,13 +212,51 @@ let nx='';if(d.bal>0&&d.due&&d.rec&&fromY(d.due)<=addDays(today(),7)){d.due=adva
 return{line:`${d.name}: abonaste ${money(paid)}. Antes debías ${money(before)}, `+(d.bal>0?`ahora debes ${money(d.bal)}.`:'ahora queda en $0, ¡deuda pagada! 🎉')+nx+(extra?` (Sobraron ${money(extra)}, esos no los anoté.)`:''),tx:1}}
 function debtDef(ctx,n0){const rec=getRec(ctx),cap=getCap(ctx),mn=getMin(ctx),date=getDate(ctx,true),amt=getAmount(ctx);
 const bal=cap!=null?cap:amt,min=cap!=null?(mn||amt):mn;if(!bal)return null;
-blank(ctx,/\b(deuda|saldo|balance|capital|adeudo|total|actual|tengo|debo|pagar|mi|tiene)\b/);
+blank(ctx,/\b(deuda|saldo|balance|adeudo|total|actual|tengo|debo|pagar|mi|tiene)\b/);
 let cat=catOf(n0,'out');if(cat==='Otros')cat='Deudas';
 let name=cleanDesc(ctx)||(cat==='Tarjeta'?'Tarjeta':cat==='Cuotas'?'Cuotas':'Deuda');
-const old=matchDebts(n0)[0]||S.debts.find(d=>d.bal>0&&norm(d.name)===norm(name));
+const ngc=s=>norm(s).split(/\s+/).filter(w=>w.length>2&&!GEN.has(w)).length,fr=findTargets(name).find(x=>x.k==='debt'&&x.s>=.85&&ngc(x.n)===ngc(name)),old=fr?fr.o:S.debts.find(d=>d.bal>0&&norm(d.name)===norm(name));
 if(old){S.last.push({k:'dbal',id:old.id,v:old.bal,due:old.due});old.bal=bal;if(date)old.due=date;if(rec)old.rec=rec;if(min)old.min=min;return{line:`${old.name}: saldo actualizado a ${money(bal)}.`}}
 const d={id:uid(),name,bal,min:min||0,due:date,rec,cat};S.debts.push(d);S.last.push({k:'debt',id:d.id});
 return{line:`Deuda anotada: ${name} ${money(bal)}`+(d.min?`, mínimo ${money(d.min)}`:'')+(date?`, próximo pago ${fmt(date)} (${rel(date)})`:'')+(rec?`, ${recTxt(rec)}`:'')+`. Dime “abono 150 a ${name}” y la bajo.`}}
+const STOP=new Set('abono abone pague pagar pago para con por los las una del que hoy ayer manana completo completa total todo todos todas cuenta'.split(' '));
+const pk=s=>s.replace(/ph/g,'f').replace(/[kq]/g,'c').replace(/z/g,'s').replace(/v/g,'b').replace(/h/g,'').replace(/y/g,'i').replace(/(.)\1+/g,'$1');
+function dl(a,b){const d=[];for(let i=0;i<=a.length;i++)d[i]=[i];for(let j=1;j<=b.length;j++)d[0][j]=j;
+for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++){d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));if(i>1&&j>1&&a[i-1]===b[j-2]&&a[i-2]===b[j-1])d[i][j]=Math.min(d[i][j],d[i-2][j-2]+1)}return d[a.length][b.length]}
+const tokScore=(a,b)=>{if(a===b)return 1;const L=Math.max(a.length,b.length),m=Math.min(a.length,b.length);if(m>=4&&(a.startsWith(b)||b.startsWith(a)))return.9;const x=dl(a,b);if(x===1)return L>=5?.9:L===4?.7:0;if(x===2)return L>=7?.8:L>=5?.65:0;return 0};
+function findTargets(d){const mt=norm(d).split(/[^a-z0-9]+/).filter(w=>w.length>=3&&!STOP.has(w)).map(pk);if(!mt.length)return[];
+const cand=S.debts.filter(x=>x.bal>0).map(o=>({k:'debt',o,n:o.name})).concat(pend().map(o=>({k:'bill',o,n:o.desc}))),out=[];
+for(const c of cand){let nt=norm(c.n).split(/[^a-z0-9]+/).filter(w=>w.length>=3);const ng=nt.filter(w=>!GEN.has(w));if(ng.length)nt=ng;nt=nt.map(pk);
+let best=0,cnt=0;for(const b of nt){let s=0;for(const a of mt)s=Math.max(s,tokScore(a,b));if(s>=.6)cnt++;best=Math.max(best,s)}
+if(best>0)out.push({k:c.k,o:c.o,n:c.n,s:Math.min(1,best+.05*Math.max(0,cnt-1))})}
+return out.sort((a,b)=>b.s-a.s)}
+function payBill(b,a,date){const rem=Math.round((b.amt-a)*100)/100,t={id:uid(),type:'out',amt:a,desc:b.desc,cat:b.cat,date};S.tx.push(t);S.last.push({k:'tx',id:t.id});
+if(rem>0.005){S.last.push({k:'bamt',id:b.id,v:b.amt});b.amt=rem;return{line:`${b.desc}: pagaste ${money(a)} y queda pendiente ${money(rem)}.`,tx:1}}
+b.paid=true;S.last.push({k:'bpay',id:b.id});nextBill(b);return{line:`Listo, ${b.desc} pagado (${money(a)}).`,tx:1}}
+function payTarget(n0,d,amt,date){
+if(!/\b(abono|abone|pague|liquide|salde|cancele)\b/.test(n0))return null;
+const full=/\b(completo|completa|total|todo|todas?|liquide|salde|cancele)\b/.test(n0),live=S.debts.filter(x=>x.bal>0);let rs=findTargets(d);
+if(!rs[0]||rs[0].s<.6){const g=/(tarjeta|credito|prestamo)/.exec(norm(d)),cs=g?live.filter(x=>norm(x.name).includes(g[1])):[];
+if(cs.length>1)return{line:`¿A cuál te refieres: ${cs.map(x=>x.name).join(' o ')}? Escríbelo con el nombre.`};if(cs.length===1)rs=[{k:'debt',o:cs[0],n:cs[0].name,s:1}]}
+const top=rs[0],sec=rs[1];
+const common=['Comida','Transporte','Vivienda','Servicios','Negocio','Salud','Compras','Ocio'].includes(catOf(n0,'out'));
+if(!top||top.s<.6||(common&&top.s<1)){
+if(/\b(abono|abone)\b/.test(n0)&&live.length&&!common)return{line:`No encontré una deuda parecida a “${d||'eso'}”. Tus deudas: ${live.map(x=>x.name).join(', ')}. Dime el nombre y lo abono.`};
+return null}
+if(sec&&sec.s>=.6&&top.s-sec.s<.15)return{line:`¿A cuál te refieres: ${rs.filter(x=>x.s>=top.s-.15).map(x=>x.n).join(' o ')}? Escríbelo con el nombre completo.`};
+const a=amt||(top.k==='debt'?(full?top.o.bal:top.o.min):top.o.amt)||0;
+if(!a)return{line:`¿Cuánto le pagaste a ${top.n}? Dime “abono 150 a ${top.n}”.`};
+const dt=date||ymd(today());
+if(top.s<.85){S.ask={k:top.k,id:top.o.id,a,dt};return{line:`¿Te refieres a ${top.n}? Responde “sí” y registro ${money(a)}, o “no”.`}}
+const r=top.k==='debt'?payDebt(top.o,a,dt):payBill(top.o,a,dt);
+if(top.s<1)r.line=`(Entendí “${d}” como ${top.n}.)\n`+r.line;
+return r}
+function askReply(o){const a=S.ask;if(!a)return false;S.ask=null;const n=norm(o).trim();
+if(/^(si|s|dale|ok|okey|claro|esa|exacto|yes|sip)\b/.test(n)){S.last=[];const x=(a.k==='debt'?S.debts:S.bills).find(z=>z.id===a.id);
+const r=x?(a.k==='debt'?payDebt(x,a.a,a.dt):payBill(x,a.a,a.dt)):{line:'Ya no encuentro esa cuenta.'};
+say('b',r.line+(r.tx?`\nSaldo: ${money(bal())} · Libre tras pagar pendientes: ${money(bal()-pendSum())}`:''));save();render();return true}
+if(/^(no|nop|nel|cancela|nada)\b/.test(n)){say('b','Listo, no anoté nada.');save();render();return true}
+return false}
 const OCR={items:[],raw:''};
 const MON={ene:0,jan:0,feb:1,mar:2,abr:3,apr:3,may:4,jun:5,jul:6,ago:7,aug:7,sep:8,oct:9,nov:10,dic:11,dec:11};
 const MR='ene|jan|feb|mar|abr|apr|may|jun|jul|ago|aug|sep|oct|nov|dic|dec';
