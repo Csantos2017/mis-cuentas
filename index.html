@@ -58,7 +58,7 @@ h2{font-size:15px;margin:0 0 8px}
 <div id="lock" style="display:none;position:fixed;inset:0;z-index:99;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;gap:12px"><b style="font-size:20px">🔒 Mis Cuentas</b><input id="pin" type="password" inputmode="numeric" placeholder="PIN" style="flex:none;width:160px;text-align:center"><button class="send" data-a="unlock" style="padding:10px 24px">Entrar</button><span id="lerr" class="r"></span></div>
 <script>
 const KEY='mis_cuentas_v1';
-let S={tx:[],bills:[],debts:[],chat:[],last:[]},view='chat',per='month',resetArm=false;
+let S={tx:[],bills:[],debts:[],notes:[],chat:[],last:[]},view='chat',per='month',resetArm=false;
 try{const r=localStorage.getItem(KEY);if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const $=s=>document.querySelector(s);
@@ -176,10 +176,12 @@ const pm=/^pin\s+(\d{4,8})$/i.exec(o);
 if(pm){sha(pm[1]).then(h=>{try{localStorage.setItem('mc_pin',h)}catch(e){}say('b','PIN guardado. La app se bloquea al volver después de 30 segundos. Para quitarlo escribe “quitar pin”.');save();render()});return}
 if(/^quitar pin$/i.test(o)){try{localStorage.removeItem('mc_pin')}catch(e){}say('b','PIN quitado.');save();render();return}
 say('u',o);if(askReply(o))return;const n=norm(o),dg=/\d/.test(n);let r;
-if(/^(ayuda|help|\?|como funciona)/.test(n))r=HELP;
+if(NOTE_RE.test(n))r=noteCmd(o,n);
+else if(/^(ayuda|help|\?|como funciona)/.test(n))r=HELP;
 else if(/(borra|elimina|deshaz|deshacer|quita|cancela).*(ultim)/.test(n))r=undo();
 else if(/(resumen|balance|como voy|cuanto tengo|cuanto llevo)/.test(n)&&!dg)r=summaryText();
 else if(/(que debo|pendientes|que tengo que pagar|proximos pagos|deudas|que me toca)/.test(n)&&!dg)r=pendingText();
+else if(/(noticias|novedades|que hay para hoy|que tengo para hoy|que me toca hoy|como amanecimos|que hay de nuevo)/.test(n)&&!dg)r=briefing();
 else if(!dg&&n.split(/\s+/).length<=4&&/^(hola|holi|buenas|buenos dias|buen dia|hey|que tal|como estas|como andas|gracias|muchas gracias|ok|okey|listo|dale|genial|perfecto)\b/.test(n))r=smalltalk(n);
 else if(AI.on&&isQ(o)){render();aiChat(o);return}
 else{r=processMsg(o);if(AI.on&&(r===HELP_SHORT||r.startsWith('Vi que'))){render();(/\d/.test(o)?aiMsg:aiChat)(o);return}}
@@ -330,8 +332,8 @@ const w=await import('https://esm.run/@mlc-ai/web-llm@0.2');
 const url=URL.createObjectURL(new Blob([`import {WebWorkerMLCEngineHandler} from 'https://esm.run/@mlc-ai/web-llm@0.2';const h=new WebWorkerMLCEngineHandler();self.onmessage=m=>h.onmessage(m);`],{type:'text/javascript'}));
 const cb={initProgressCallback:p=>stat('Despertando la IA… '+Math.round((p.progress||0)*100)+'% (la primera vez tarda)')};
 for(const m of MODELS){
-try{stat('Despertando la IA…');const wk=new Worker(url,{type:'module'});try{AI.eng=await w.CreateWebWorkerMLCEngine(wk,m,cb)}catch(e){wk.terminate();throw e}return true}catch(e){AI.eng=null}
-try{AI.eng=await w.CreateMLCEngine(m,cb);return true}catch(e){AI.eng=null}}
+try{stat('Despertando la IA…');const wk=new Worker(url,{type:'module'});try{AI.eng=await w.CreateWebWorkerMLCEngine(wk,m,cb)}catch(e){wk.terminate();throw e}return true}catch(e){AI.err=String(e&&e.message||e).slice(0,90);AI.eng=null}
+try{AI.eng=await w.CreateMLCEngine(m,cb);return true}catch(e){AI.err=String(e&&e.message||e).slice(0,90);AI.eng=null}}
 return false}finally{AI.loading=null;stat('')}})();
 return AI.loading}
 const aiReady=()=>Promise.race([aiLoad(),new Promise(r=>setTimeout(()=>r(false),120000))]);
@@ -347,49 +349,49 @@ AI.busy=true;const ok=await aiLoad().catch(()=>false);AI.busy=false;
 if(ok)say('b','IA local lista. Ya puedes escribirme normal, y después de esta primera descarga funciona sin internet.');
 else{AI.on=false;setAI();try{localStorage.setItem('mc_ai','0')}catch(e){}say('b','No pude cargar la IA local. Hace falta internet la primera vez (el modelo pesa cerca de 1 GB) y un navegador con WebGPU. Sigo con el modo básico.')}
 save();render()}
-const SYS_CHAT=`Eres el asistente de cuentas personales del usuario, dentro de su app Mis Cuentas. Hablas en español informal, cálido y directo, como un amigo que sabe de plata. Reglas:
-1. Responde SOLO con los DATOS que te paso. Nunca inventes montos, fechas ni deudas. Si el dato no está, di "no tengo ese dato" y dile cómo registrarlo.
-2. Usa los números tal cual aparecen en los DATOS. No hagas cuentas complicadas: usa los totales ya calculados. Si tienes que sumar, suma pocos números y muéstralos.
-3. Máximo 4 oraciones cortas. Sin listas largas ni markdown.
-4. Si algo está vencido o vence en 3 días o menos, avísalo al final en una frase.
-5. Para registrar, el usuario escribe frases como "gané 80", "gasté 15 en almuerzo", "tengo que pagar 50 de luz el viernes", "abono 150 a chase" o "mi tarjeta tiene saldo 1000". Si pide registrar algo sin monto, pregúntale el monto.
-6. Si te saludan o platican, responde breve y amable y ofrece ayuda con sus cuentas.
-Ejemplos de estilo (los números son inventados, no los uses):
-Usuario: ¿cuándo vence lo de Affirm?
-Asistente: Affirm vence el vie 4 dic (en 7 días), son $100. ¡Ojo que ya falta poco!
-Usuario: ¿en qué se me va más plata?
-Asistente: Este mes lo que más gastas es Comida, $210. Le sigue Transporte con $90.`;
-function aiFacts(){const t=today(),cm=ymd(t).slice(0,7),pm=ymd(mk(t.getFullYear(),t.getMonth()-1,1)).slice(0,7),by={},bp={};
+const SYS_CHAT=`Eres el asistente de cuentas de la app Mis Cuentas. Habla en español informal, corto y directo.
+Reglas: usa SOLO los DATOS; no inventes montos ni fechas; si falta algo di "no tengo ese dato". Usa los totales ya calculados. Máximo 3 oraciones, sin listas ni markdown. Si algo está vencido o vence en 3 días, avísalo al final.
+Para registrar, el usuario escribe "gané 80", "gasté 15 en almuerzo", "tengo que pagar 50 de luz el viernes" o "abono 150 a chase". Si falta el monto, pregúntalo.
+Ejemplo (números inventados): Usuario: ¿cuándo vence Affirm? Asistente: Affirm vence el vie 4 dic (en 7 días), son $100.`;
+const notesText=()=>S.notes&&S.notes.length?'\nREGLAS DEL USUARIO (obedécelas siempre):\n'+S.notes.map((x,i)=>`${i+1}. ${x}`).join('\n'):'';
+function aiFacts(q){const t=today(),n=norm(q||''),cm=ymd(t).slice(0,7),pm=ymd(mk(t.getFullYear(),t.getMonth()-1,1)).slice(0,7),by={},bp={};
 S.tx.filter(x=>x.type==='out').forEach(x=>{const k=x.date.slice(0,7);if(k===cm)by[x.cat]=(by[x.cat]||0)+x.amt;if(k===pm)bp[x.cat]=(bp[x.cat]||0)+x.amt});
 const f=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,8).map(e=>e[0]+' '+money(e[1])).join(', ')||'ninguno',l30=ymd(addDays(t,30)),ds=S.debts.filter(d=>d.bal>0);
 const due30=pend().filter(b=>b.due&&b.due<=l30).reduce((s,b)=>s+b.amt,0)+ds.filter(d=>d.due&&d.due<=l30).reduce((s,d)=>s+(d.min||0),0);
-return`HOY: ${DIA[t.getDay()]} ${ymd(t)}
-MES ACTUAL: ingresos ${money(sumP('in','month'))}, gastos ${money(sumP('out','month'))}
-ÚLTIMOS 7 DÍAS: ingresos ${money(sumP('in','week'))}, gastos ${money(sumP('out','week'))}
-SALDO TOTAL: ${money(bal())}
-PAGOS PENDIENTES (total): ${money(pendSum())}
-A PAGAR EN LOS PRÓXIMOS 30 DÍAS (pendientes + mínimos de deudas): ${money(due30)}
-LIBRE DESPUÉS DE PENDIENTES: ${money(bal()-pendSum())}
-DEUDA TOTAL: ${money(debtTot())}
-GASTOS POR CATEGORÍA ESTE MES: ${f(by)}
-GASTOS POR CATEGORÍA MES PASADO: ${f(bp)}
-DEUDAS:
-${ds.map(d=>`- ${d.name}: saldo ${money(d.bal)}`+(d.min?`, mínimo ${money(d.min)}`:'')+(d.due?`, próximo pago ${fmt(d.due)} (${rel(d.due)})`:'')+(d.rec?', '+recTxt(d.rec):'')).join('\n')||'- ninguna'}
-PAGOS PENDIENTES:
-${pend().map(b=>`- ${b.desc} ${money(b.amt)}`+(b.due?` vence ${fmt(b.due)} (${rel(b.due)})`:' sin fecha')+(b.rec?', '+recTxt(b.rec):'')).join('\n')||'- ninguno'}
-ÚLTIMOS MOVIMIENTOS:
-${S.tx.slice(-10).map(x=>`- ${x.date} ${x.type==='in'?'ingreso':'gasto'} ${money(x.amt)} ${x.desc} (${x.cat})`).join('\n')||'- ninguno'}`}
+const fC=/gast|categor|comida|donde|en que|mas plata|mes pasado|mucho/.test(n),fD=/deuda|tarjeta|abon|saldo|debo|chase|affirm|capital|prestamo|credito|cuota|minimo/.test(n)||findTargets(q||'').length>0,
+fB=/pagar|vence|pendiente|toca|luz|agua|internet|renta|hoy|manana|semana|proxim|alcanza/.test(n),fM=/ultim|movimiento|gane|gaste|ingres|ayer|hoy|semana/.test(n),all=!(fC||fD||fB||fM);
+let s=`HOY: ${DIA[t.getDay()]} ${ymd(t)}\nMES: ingresos ${money(sumP('in','month'))}, gastos ${money(sumP('out','month'))}\nSALDO: ${money(bal())}\nLIBRE tras pendientes: ${money(bal()-pendSum())}\nA PAGAR PRÓXIMOS 30 DÍAS: ${money(due30)}\nDEUDA TOTAL: ${money(debtTot())}`;
+if(fC||all)s+=`\nGASTOS ESTE MES: ${f(by)}\nGASTOS MES PASADO: ${f(bp)}`;
+if(fD||all)s+='\nDEUDAS:\n'+(ds.map(d=>`- ${d.name}: saldo ${money(d.bal)}`+(d.min?`, mínimo ${money(d.min)}`:'')+(d.due?`, próximo pago ${fmt(d.due)} (${rel(d.due)})`:'')+(d.rec?', '+recTxt(d.rec):'')).join('\n')||'- ninguna');
+if(fB||all)s+='\nPENDIENTES:\n'+(pend().map(b=>`- ${b.desc} ${money(b.amt)}`+(b.due?` vence ${fmt(b.due)} (${rel(b.due)})`:' sin fecha')+(b.rec?', '+recTxt(b.rec):'')).join('\n')||'- ninguno');
+if(fM)s+='\nÚLTIMOS MOVIMIENTOS:\n'+(S.tx.slice(-8).map(x=>`- ${x.date} ${x.type==='in'?'ingreso':'gasto'} ${money(x.amt)} ${x.desc} (${x.cat})`).join('\n')||'- ninguno');
+return s}
 async function aiChat(o){
 if(AI.busy){say('b','Todavía estoy con lo anterior. Si tarda mucho, toca Cancelar arriba.');save();render();return}
 AI.busy=true;stat('Pensando…');
-const hist=S.chat.slice(-7,-1).map(x=>({role:x.w==='u'?'user':'assistant',content:x.t.slice(0,300)})),msg={w:'b',t:'…'};
+const hist=S.chat.slice(-5,-1).map(x=>({role:x.w==='u'?'user':'assistant',content:x.t.slice(0,200)})),msg={w:'b',t:'…'};
 S.chat.push(msg);render();
 try{if(!await aiReady()||!AI.on)throw 0;stat('Pensando…');
-const st=await AI.eng.chat.completions.create({messages:[{role:'system',content:SYS_CHAT+'\nDATOS:\n'+aiFacts()},...hist,{role:'user',content:o}],temperature:0.3,max_tokens:260,stream:true});
+const st=await AI.eng.chat.completions.create({messages:[{role:'system',content:SYS_CHAT+notesText()+'\nDATOS:\n'+aiFacts(o)},...hist,{role:'user',content:o}],temperature:0.3,max_tokens:180,stream:true});
 let acc='',last=0;for await(const c of st){acc+=(c.choices[0]&&c.choices[0].delta&&c.choices[0].delta.content)||'';msg.t=acc||'…';if(Date.now()-last>150){render();last=Date.now()}}
 msg.t=acc.trim()||'No supe qué responderte. Prueba con “resumen” o “qué debo”.'}
-catch(e){const i=S.chat.indexOf(msg);if(i>=0)S.chat.splice(i,1);if(AI.on)say('b','La IA todavía no está lista (la primera carga tarda). Sigue cargando en segundo plano, prueba otra vez en un minuto. Mientras tanto puedo anotar y consultar: “resumen”, “qué debo”, “gané 50”…')}
+catch(e){const i=S.chat.indexOf(msg);if(i>=0)S.chat.splice(i,1);
+if(AI.on)say('b',AI.loading?'La IA sigue cargando en segundo plano. Prueba otra vez en un minuto; mientras tanto puedo anotar y consultar: “resumen”, “qué debo”, “noticias”.':'No pude cargar la IA ahora'+(AI.err?' ('+AI.err+')':'')+'. Revisa que Chrome esté actualizado y tengas internet (la primera vez baja el modelo). Mientras tanto uso el modo básico.')}
 save();render();stat('');AI.busy=false}
+const NOTE_RE=/^(ensena|ensenale|ensenate|aprende|entrena|entrenate|instruccion|instrucciones|regla|reglas|mis instrucciones|que has aprendido|que te he ensenado|olvida\s+(?:instruccion\s+)?\d+|olvida (?:todo|todas|las instrucciones)|borra instrucciones)\b/;
+function noteCmd(o,n){let m;
+if(/^(mis instrucciones|que has aprendido|que te he ensenado)/.test(n))return S.notes.length?'Lo que me has enseñado:\n'+S.notes.map((x,i)=>`${i+1}. ${x}`).join('\n')+'\nPara quitar una: “olvida 2”. Para quitar todas: “olvida todo”.':'Todavía no me has enseñado nada. Escribe por ejemplo: enseña: háblame corto y avísame primero lo que vence pronto.';
+if(/^(olvida (todo|todas|las instrucciones)|borra instrucciones)/.test(n)){S.notes=[];return'Listo, olvidé todas las instrucciones.'}
+if(m=/^olvida\s+(?:instruccion\s+)?(\d+)/.exec(n)){const i=+m[1]-1;if(S.notes[i]==null)return'No tengo esa instrucción.';return`Olvidé: “${S.notes.splice(i,1)[0]}”.`}
+const txt=o.replace(/^\S+\s*[:\-]?\s*(?:que\s+)?/i,'').trim();
+if(!txt)return'Dime qué quieres que aprenda. Ejemplo: enseña: háblame corto y avísame primero lo que vence pronto.';
+for(const l of txt.split(/\n+/)){const s=l.trim().slice(0,250);if(s)S.notes.push(s)}
+S.notes=S.notes.slice(-20);
+return`Anotado. Lo tendré en cuenta cuando platiquemos (${S.notes.length} guardadas)`+(AI.on?'.':', pero necesito la IA activada (🧠) para usarlas.')+' Se quedan solo en tu teléfono.'}
+function briefing(){const t=ymd(today()),l3=ymd(addDays(today(),3)),l7=ymd(addDays(today(),7)),al=alertsText();
+const prox=[...pend().filter(b=>b.due&&b.due>l3&&b.due<=l7).map(b=>`• ${b.desc} ${money(b.amt)} — ${fmt(b.due)} (${rel(b.due)})`),...S.debts.filter(d=>d.bal>0&&d.due&&d.due>l3&&d.due<=l7).map(d=>`• ${d.name}${d.min?' (mínimo '+money(d.min)+')':''} — ${fmt(d.due)} (${rel(d.due)})`)];
+const hi=S.tx.filter(x=>x.date===t&&x.type==='in').reduce((s,x)=>s+x.amt,0),ho=S.tx.filter(x=>x.date===t&&x.type==='out').reduce((s,x)=>s+x.amt,0);
+return'Noticias de hoy:\n'+(al||'Nada vence en los próximos 3 días 👍')+(prox.length?'\n\nEsta semana:\n'+prox.join('\n'):'')+`\n\nHoy llevas: ingresos ${money(hi)}, gastos ${money(ho)}.\nSaldo ${money(bal())} · libre tras pagar pendientes ${money(bal()-pendSum())}.`}
 function alertsText(){const t=ymd(today()),l=ymd(addDays(today(),3)),r=[];
 for(const b of pend())if(b.due&&b.due<=l)r.push(`• ${b.desc} ${money(b.amt)} — ${b.due<t?'VENCIDO ':''}${fmt(b.due)} (${rel(b.due)})`);
 for(const d of S.debts)if(d.bal>0&&d.due&&d.due<=l)r.push(`• ${d.name}: toca pago`+(d.min?` (mínimo ${money(d.min)})`:'')+` — ${d.due<t?'VENCIDO ':''}${fmt(d.due)} (${rel(d.due)})`);
@@ -399,7 +401,7 @@ if(AI.busy){say('b','Todavía estoy con lo anterior. Si tarda mucho, toca Cancel
 try{if(!/\bya pague\b/.test(norm(o))&&await aiReady()){
 const t=today();
 const sys=`Eres el intérprete de una app de gastos personales en El Salvador (dólares). Hoy es ${ymd(t)} (${DIA[t.getDay()]}). Responde SOLO con un JSON válido, sin texto extra: {"items":[{"type":"in|out|bill","amount":0,"desc":"texto corto","category":"${CATS}","date":"YYYY-MM-DD"}],"answer":""}. type: in=ingreso (gané, cobré, vendí), out=gasto ya hecho, bill=pago pendiente por pagar. date: fecha del movimiento o de vencimiento, resolviendo hoy, mañana, el viernes, el 15; null si no hay. Un mensaje puede traer varios items. Si el usuario solo pregunta algo, deja items vacío y responde en "answer" en español informal y corto usando estos datos:\n${isQ(o)?summaryText()+'\n'+pendingText()+'\n'+S.tx.slice(-15).map(x=>x.date+' '+x.type+' '+x.amt+' '+x.desc).join('\n'):''}`;
-const res=await AI.eng.chat.completions.create({messages:[{role:'system',content:sys},{role:'user',content:o}],temperature:0.1,max_tokens:isQ(o)?220:150});
+const res=await AI.eng.chat.completions.create({messages:[{role:'system',content:sys+notesText()},{role:'user',content:o}],temperature:0.1,max_tokens:isQ(o)?220:150});
 const j=JSON.parse(/\{[\s\S]*\}/.exec(res.choices[0].message.content)[0]);
 const items=(j.items||[]).map(i=>({type:i.type,amt:Math.round(+i.amount*100)/100,desc:String(i.desc||'').trim(),cat:i.category,date:/^\d{4}-\d{2}-\d{2}$/.test(i.date)?i.date:null}));
 if(items.length){
@@ -466,10 +468,10 @@ else if(a==='chip'){inp.value=t.replace('  ',' ');inp.focus()}
 else if(a==='dtx'){S.tx=S.tx.filter(x=>x.id!==t);save();render()}
 else if(a==='dbill'){S.bills=S.bills.filter(x=>x.id!==t);save();render()}
 else if(a==='pay'){const b=S.bills.find(x=>x.id===t);if(b){b.paid=true;S.tx.push({id:uid(),type:'out',amt:b.amt,desc:b.desc,cat:b.cat,date:ymd(today())});nextBill(b);save();render()}}
-else if(a==='reset'){if(resetArm){S={tx:[],bills:[],debts:[],chat:[],last:[]};resetArm=false;save()}else resetArm=true;render()}});
+else if(a==='reset'){if(resetArm){S={tx:[],bills:[],debts:[],notes:[],chat:[],last:[]};resetArm=false;save()}else resetArm=true;render()}});
 $('#inp').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();handle(e.target.value);e.target.value=''}});
 {const td=ymd(today());if(S.lastAlert!==td){S.lastAlert=td;const a=alertsText();if(a){say('b',a);save()}}}
-render();setAI();lockNow();
+render();setAI();lockNow();if(AI.on)setTimeout(()=>{aiReady().catch(()=>{})},2500);
 $('#file').addEventListener('change',async e=>{const fs=[...e.target.files];e.target.value='';for(const f of fs)await ocrRun(f)});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script></body></html>
