@@ -180,8 +180,8 @@ if(/^(ayuda|help|\?|como funciona)/.test(n))r=HELP;
 else if(/(borra|elimina|deshaz|deshacer|quita|cancela).*(ultim)/.test(n))r=undo();
 else if(/(resumen|balance|como voy|cuanto tengo|cuanto llevo)/.test(n)&&!dg)r=summaryText();
 else if(/(que debo|pendientes|que tengo que pagar|proximos pagos|deudas|que me toca)/.test(n)&&!dg)r=pendingText();
-else if(AI.on&&isQ(o)){aiMsg(o);return}
-else{r=processMsg(o);if(AI.on&&(r===HELP_SHORT||r.startsWith('Vi que'))){aiMsg(o);return}}
+else if(AI.on&&isQ(o)){aiChat(o);return}
+else{r=processMsg(o);if(AI.on&&(r===HELP_SHORT||r.startsWith('Vi que'))){(/\d/.test(o)?aiMsg:aiChat)(o);return}}
 say('b',r);save();render()}
 const isQ=o=>{const n=norm(o);return/[?¿]/.test(o)||/^(que|cuanto|cuando|como|en que|donde|cual|me alcanza|puedo|dime)\b/.test(n)};
 const recTxt=r=>r==='m'?'cada mes':'cada '+r+' días';
@@ -333,6 +333,52 @@ AI.busy=true;const ok=await aiLoad().catch(()=>false);AI.busy=false;
 if(ok)say('b','IA local lista. Ya puedes escribirme normal, y después de esta primera descarga funciona sin internet.');
 else{AI.on=false;setAI();try{localStorage.setItem('mc_ai','0')}catch(e){}say('b','No pude cargar la IA local. Hace falta internet la primera vez (el modelo pesa cerca de 1 GB) y un navegador con WebGPU. Sigo con el modo básico.')}
 save();render()}
+const SYS_CHAT=`Eres el asistente de cuentas personales del usuario, dentro de su app Mis Cuentas. Hablas en español informal, cálido y directo, como un amigo que sabe de plata. Reglas:
+1. Responde SOLO con los DATOS que te paso. Nunca inventes montos, fechas ni deudas. Si el dato no está, di "no tengo ese dato" y dile cómo registrarlo.
+2. Usa los números tal cual aparecen en los DATOS. No hagas cuentas complicadas: usa los totales ya calculados. Si tienes que sumar, suma pocos números y muéstralos.
+3. Máximo 4 oraciones cortas. Sin listas largas ni markdown.
+4. Si algo está vencido o vence en 3 días o menos, avísalo al final en una frase.
+5. Para registrar, el usuario escribe frases como "gané 80", "gasté 15 en almuerzo", "tengo que pagar 50 de luz el viernes", "abono 150 a chase" o "mi tarjeta tiene saldo 1000". Si pide registrar algo sin monto, pregúntale el monto.
+6. Si te saludan o platican, responde breve y amable y ofrece ayuda con sus cuentas.
+Ejemplos de estilo (los números son inventados, no los uses):
+Usuario: ¿cuándo vence lo de Affirm?
+Asistente: Affirm vence el vie 4 dic (en 7 días), son $100. ¡Ojo que ya falta poco!
+Usuario: ¿en qué se me va más plata?
+Asistente: Este mes lo que más gastas es Comida, $210. Le sigue Transporte con $90.`;
+function aiFacts(){const t=today(),cm=ymd(t).slice(0,7),pm=ymd(mk(t.getFullYear(),t.getMonth()-1,1)).slice(0,7),by={},bp={};
+S.tx.filter(x=>x.type==='out').forEach(x=>{const k=x.date.slice(0,7);if(k===cm)by[x.cat]=(by[x.cat]||0)+x.amt;if(k===pm)bp[x.cat]=(bp[x.cat]||0)+x.amt});
+const f=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,8).map(e=>e[0]+' '+money(e[1])).join(', ')||'ninguno',l30=ymd(addDays(t,30)),ds=S.debts.filter(d=>d.bal>0);
+const due30=pend().filter(b=>b.due&&b.due<=l30).reduce((s,b)=>s+b.amt,0)+ds.filter(d=>d.due&&d.due<=l30).reduce((s,d)=>s+(d.min||0),0);
+return`HOY: ${DIA[t.getDay()]} ${ymd(t)}
+MES ACTUAL: ingresos ${money(sumP('in','month'))}, gastos ${money(sumP('out','month'))}
+ÚLTIMOS 7 DÍAS: ingresos ${money(sumP('in','week'))}, gastos ${money(sumP('out','week'))}
+SALDO TOTAL: ${money(bal())}
+PAGOS PENDIENTES (total): ${money(pendSum())}
+A PAGAR EN LOS PRÓXIMOS 30 DÍAS (pendientes + mínimos de deudas): ${money(due30)}
+LIBRE DESPUÉS DE PENDIENTES: ${money(bal()-pendSum())}
+DEUDA TOTAL: ${money(debtTot())}
+GASTOS POR CATEGORÍA ESTE MES: ${f(by)}
+GASTOS POR CATEGORÍA MES PASADO: ${f(bp)}
+DEUDAS:
+${ds.map(d=>`- ${d.name}: saldo ${money(d.bal)}`+(d.min?`, mínimo ${money(d.min)}`:'')+(d.due?`, próximo pago ${fmt(d.due)} (${rel(d.due)})`:'')+(d.rec?', '+recTxt(d.rec):'')).join('\n')||'- ninguna'}
+PAGOS PENDIENTES:
+${pend().map(b=>`- ${b.desc} ${money(b.amt)}`+(b.due?` vence ${fmt(b.due)} (${rel(b.due)})`:' sin fecha')+(b.rec?', '+recTxt(b.rec):'')).join('\n')||'- ninguno'}
+ÚLTIMOS MOVIMIENTOS:
+${S.tx.slice(-10).map(x=>`- ${x.date} ${x.type==='in'?'ingreso':'gasto'} ${money(x.amt)} ${x.desc} (${x.cat})`).join('\n')||'- ninguno'}`}
+async function aiChat(o){
+if(AI.busy)return;AI.busy=true;stat('Pensando…');const msg={w:'b',t:'…'};
+try{if(!await aiLoad())throw 0;
+const hist=S.chat.slice(-7,-1).map(x=>({role:x.w==='u'?'user':'assistant',content:x.t.slice(0,300)}));
+S.chat.push(msg);
+const st=await AI.eng.chat.completions.create({messages:[{role:'system',content:SYS_CHAT+'\nDATOS:\n'+aiFacts()},...hist,{role:'user',content:o}],temperature:0.3,max_tokens:260,stream:true});
+let acc='',last=0;for await(const c of st){acc+=(c.choices[0]&&c.choices[0].delta&&c.choices[0].delta.content)||'';msg.t=acc||'…';if(Date.now()-last>150){render();last=Date.now()}}
+msg.t=acc.trim()||'No supe qué responderte. Prueba con “resumen” o “qué debo”.'}
+catch(e){const i=S.chat.indexOf(msg);if(i>=0)S.chat.splice(i,1);say('b',processMsg(o))}
+save();render();stat('');AI.busy=false}
+function alertsText(){const t=ymd(today()),l=ymd(addDays(today(),3)),r=[];
+for(const b of pend())if(b.due&&b.due<=l)r.push(`• ${b.desc} ${money(b.amt)} — ${b.due<t?'VENCIDO ':''}${fmt(b.due)} (${rel(b.due)})`);
+for(const d of S.debts)if(d.bal>0&&d.due&&d.due<=l)r.push(`• ${d.name}: toca pago`+(d.min?` (mínimo ${money(d.min)})`:'')+` — ${d.due<t?'VENCIDO ':''}${fmt(d.due)} (${rel(d.due)})`);
+return r.length?'Ojo con estos pagos:\n'+r.join('\n'):''}
 async function aiMsg(o){
 if(AI.busy)return;AI.busy=true;stat('Pensando…');let r;
 try{if(!/\bya pague\b/.test(norm(o))&&await aiLoad()){
@@ -406,6 +452,7 @@ else if(a==='dbill'){S.bills=S.bills.filter(x=>x.id!==t);save();render()}
 else if(a==='pay'){const b=S.bills.find(x=>x.id===t);if(b){b.paid=true;S.tx.push({id:uid(),type:'out',amt:b.amt,desc:b.desc,cat:b.cat,date:ymd(today())});nextBill(b);save();render()}}
 else if(a==='reset'){if(resetArm){S={tx:[],bills:[],debts:[],chat:[],last:[]};resetArm=false;save()}else resetArm=true;render()}});
 $('#inp').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();handle(e.target.value);e.target.value=''}});
+{const td=ymd(today());if(S.lastAlert!==td){S.lastAlert=td;const a=alertsText();if(a){say('b',a);save()}}}
 render();setAI();lockNow();
 $('#file').addEventListener('change',async e=>{const fs=[...e.target.files];e.target.value='';for(const f of fs)await ocrRun(f)});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
