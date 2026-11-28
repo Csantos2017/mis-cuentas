@@ -44,7 +44,7 @@ h2{font-size:15px;margin:0 0 8px}
 .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
 .wrap{overflow-x:auto}
 </style></head><body>
-<header><h1>💸 Mis Cuentas</h1><span><button class="sm" data-a="ai" id="aibtn">🧠 IA: off</button> <b id="sal"></b></span></header><div id="aistat" class="k" style="padding:0 16px"></div>
+<header><h1>💸 Mis Cuentas</h1><span><button class="sm" data-a="ai" id="aibtn">🧠 IA: off</button> <b id="sal"></b></span></header><div id="aistat" class="k" style="display:none;padding:6px 16px;background:var(--card);border-bottom:1px solid var(--line)"></div>
 <main id="main"></main>
 <div id="comp"><div class="chips">
 <button class="chip" data-a="chip" data-t="Hoy gané ">Hoy gané…</button>
@@ -126,7 +126,7 @@ return null}
 function getAmount(ctx){const m=/\$?\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:[.,]\d+)?)\s*(mil\b|k\b)?/.exec(ctx.n);if(!m)return 0;
 const a=m.index,b=a+m[0].length,sp=' '.repeat(b-a);ctx.n=ctx.n.slice(0,a)+sp+ctx.n.slice(b);ctx.o=ctx.o.slice(0,a)+sp+ctx.o.slice(b);
 let s=m[1];s=/,\d{3}/.test(s)?s.replace(/,/g,''):s.replace(',','.');let v=parseFloat(s);if(m[2])v*=1000;return Math.round(v*100)/100}
-const VERB=new Set('hoy ayer manana ahora ahorita anoche antier abono abone liquide salde cancele completo completa gane gaste pague compre cobre vendi recibi ingrese debo pagar vence vencen toca tengo ya dolares dolar usd'.split(' ')),EDGE=new Set('de del en por para la el los las un una mi mis y con a que tambien al lo se me'.split(' '));
+const VERB=new Set('hola holi buenas hey hoy ayer manana ahora ahorita anoche antier abono abone liquide salde cancele completo completa gane gaste pague compre cobre vendi recibi ingrese debo pagar vence vencen toca tengo ya dolares dolar usd'.split(' ')),EDGE=new Set('de del en por para la el los las un una mi mis y con a que tambien al lo se me'.split(' '));
 function cleanDesc(ctx){blank(ctx,/\b(tengo que pagar|tengo que|debo pagar|toca pagar|hay que pagar|me pagaron|me depositaron|me dieron|me cobraron|me entro|ya pague)\b/);
 const cl=s=>s.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,''),nt=ctx.n.split(/\s+/),ot=ctx.o.split(/\s+/);let k=[];
 nt.forEach((w,i)=>{const c=cl(w);if(c&&!VERB.has(c))k.push([c,cl(ot[i])])});
@@ -180,8 +180,9 @@ if(/^(ayuda|help|\?|como funciona)/.test(n))r=HELP;
 else if(/(borra|elimina|deshaz|deshacer|quita|cancela).*(ultim)/.test(n))r=undo();
 else if(/(resumen|balance|como voy|cuanto tengo|cuanto llevo)/.test(n)&&!dg)r=summaryText();
 else if(/(que debo|pendientes|que tengo que pagar|proximos pagos|deudas|que me toca)/.test(n)&&!dg)r=pendingText();
-else if(AI.on&&isQ(o)){aiChat(o);return}
-else{r=processMsg(o);if(AI.on&&(r===HELP_SHORT||r.startsWith('Vi que'))){(/\d/.test(o)?aiMsg:aiChat)(o);return}}
+else if(!dg&&n.split(/\s+/).length<=4&&/^(hola|holi|buenas|buenos dias|buen dia|hey|que tal|como estas|como andas|gracias|muchas gracias|ok|okey|listo|dale|genial|perfecto)\b/.test(n))r=smalltalk(n);
+else if(AI.on&&isQ(o)){render();aiChat(o);return}
+else{r=processMsg(o);if(AI.on&&(r===HELP_SHORT||r.startsWith('Vi que'))){render();(/\d/.test(o)?aiMsg:aiChat)(o);return}}
 say('b',r);save();render()}
 const isQ=o=>{const n=norm(o);return/[?¿]/.test(o)||/^(que|cuanto|cuando|como|en que|donde|cual|me alcanza|puedo|dime)\b/.test(n)};
 const recTxt=r=>r==='m'?'cada mes':'cada '+r+' días';
@@ -318,14 +319,27 @@ const MODELS=['Qwen2.5-1.5B-Instruct-q4f16_1-MLC','Qwen2.5-0.5B-Instruct-q4f16_1
 const CATS='Comida|Transporte|Vivienda|Servicios|Deudas|Negocio|Salud|Compras|Ocio|Ventas|Trabajo|Otros';
 const AI={on:false,eng:null,busy:false};
 try{AI.on=localStorage.getItem('mc_ai')==='1'}catch(e){}
-const stat=t=>{$('#aistat').textContent=t};
+const stat=t=>{const e=$('#aistat');e.style.display=t?'flex':'none';e.style.justifyContent='space-between';e.style.alignItems='center';e.innerHTML=t?`<span>🧠 ${esc(t)}</span><button class="sm" data-a="aioff">Cancelar</button>`:''};
 const setAI=()=>{$('#aibtn').textContent='🧠 IA: '+(AI.on?'on':'off')};
 async function aiLoad(){
 if(AI.eng)return true;
+if(AI.loading)return AI.loading;
 if(!navigator.gpu)return false;
+AI.loading=(async()=>{try{
 const w=await import('https://esm.run/@mlc-ai/web-llm@0.2');
-for(const m of MODELS){try{stat('Cargando IA…');AI.eng=await w.CreateMLCEngine(m,{initProgressCallback:p=>stat('IA '+Math.round((p.progress||0)*100)+'% · '+String(p.text||'').slice(0,50))});stat('');return true}catch(e){AI.eng=null}}
-stat('');return false}
+const url=URL.createObjectURL(new Blob([`import {WebWorkerMLCEngineHandler} from 'https://esm.run/@mlc-ai/web-llm@0.2';const h=new WebWorkerMLCEngineHandler();self.onmessage=m=>h.onmessage(m);`],{type:'text/javascript'}));
+const cb={initProgressCallback:p=>stat('Despertando la IA… '+Math.round((p.progress||0)*100)+'% (la primera vez tarda)')};
+for(const m of MODELS){
+try{stat('Despertando la IA…');const wk=new Worker(url,{type:'module'});try{AI.eng=await w.CreateWebWorkerMLCEngine(wk,m,cb)}catch(e){wk.terminate();throw e}return true}catch(e){AI.eng=null}
+try{AI.eng=await w.CreateMLCEngine(m,cb);return true}catch(e){AI.eng=null}}
+return false}finally{AI.loading=null;stat('')}})();
+return AI.loading}
+const aiReady=()=>Promise.race([aiLoad(),new Promise(r=>setTimeout(()=>r(false),120000))]);
+function aiOff(){AI.on=false;AI.busy=false;try{localStorage.setItem('mc_ai','0')}catch(e){}setAI();stat('');say('b','Apagué la IA. Sigo en modo básico; la puedes volver a activar con el botón 🧠.');save();render()}
+function smalltalk(n){const a=alertsText();
+if(/^(gracias|muchas gracias)/.test(n))return'¡De nada! Aquí estoy para lo que necesites.';
+if(/^(ok|okey|listo|dale|genial|perfecto)/.test(n))return'Perfecto. ¿Algo más que anotar?';
+return'¡Hola! ¿Qué anotamos hoy?'+(a?'\n\n'+a:'')}
 async function aiToggle(){
 if(AI.busy)return;AI.on=!AI.on;try{localStorage.setItem('mc_ai',AI.on?'1':'0')}catch(e){}setAI();
 if(!AI.on)return;
@@ -366,22 +380,23 @@ ${pend().map(b=>`- ${b.desc} ${money(b.amt)}`+(b.due?` vence ${fmt(b.due)} (${re
 ÚLTIMOS MOVIMIENTOS:
 ${S.tx.slice(-10).map(x=>`- ${x.date} ${x.type==='in'?'ingreso':'gasto'} ${money(x.amt)} ${x.desc} (${x.cat})`).join('\n')||'- ninguno'}`}
 async function aiChat(o){
-if(AI.busy)return;AI.busy=true;stat('Pensando…');const msg={w:'b',t:'…'};
-try{if(!await aiLoad())throw 0;
-const hist=S.chat.slice(-7,-1).map(x=>({role:x.w==='u'?'user':'assistant',content:x.t.slice(0,300)}));
-S.chat.push(msg);
+if(AI.busy){say('b','Todavía estoy con lo anterior. Si tarda mucho, toca Cancelar arriba.');save();render();return}
+AI.busy=true;stat('Pensando…');
+const hist=S.chat.slice(-7,-1).map(x=>({role:x.w==='u'?'user':'assistant',content:x.t.slice(0,300)})),msg={w:'b',t:'…'};
+S.chat.push(msg);render();
+try{if(!await aiReady()||!AI.on)throw 0;stat('Pensando…');
 const st=await AI.eng.chat.completions.create({messages:[{role:'system',content:SYS_CHAT+'\nDATOS:\n'+aiFacts()},...hist,{role:'user',content:o}],temperature:0.3,max_tokens:260,stream:true});
 let acc='',last=0;for await(const c of st){acc+=(c.choices[0]&&c.choices[0].delta&&c.choices[0].delta.content)||'';msg.t=acc||'…';if(Date.now()-last>150){render();last=Date.now()}}
 msg.t=acc.trim()||'No supe qué responderte. Prueba con “resumen” o “qué debo”.'}
-catch(e){const i=S.chat.indexOf(msg);if(i>=0)S.chat.splice(i,1);say('b',processMsg(o))}
+catch(e){const i=S.chat.indexOf(msg);if(i>=0)S.chat.splice(i,1);if(AI.on)say('b','La IA todavía no está lista (la primera carga tarda). Sigue cargando en segundo plano, prueba otra vez en un minuto. Mientras tanto puedo anotar y consultar: “resumen”, “qué debo”, “gané 50”…')}
 save();render();stat('');AI.busy=false}
 function alertsText(){const t=ymd(today()),l=ymd(addDays(today(),3)),r=[];
 for(const b of pend())if(b.due&&b.due<=l)r.push(`• ${b.desc} ${money(b.amt)} — ${b.due<t?'VENCIDO ':''}${fmt(b.due)} (${rel(b.due)})`);
 for(const d of S.debts)if(d.bal>0&&d.due&&d.due<=l)r.push(`• ${d.name}: toca pago`+(d.min?` (mínimo ${money(d.min)})`:'')+` — ${d.due<t?'VENCIDO ':''}${fmt(d.due)} (${rel(d.due)})`);
 return r.length?'Ojo con estos pagos:\n'+r.join('\n'):''}
 async function aiMsg(o){
-if(AI.busy)return;AI.busy=true;stat('Pensando…');let r;
-try{if(!/\bya pague\b/.test(norm(o))&&await aiLoad()){
+if(AI.busy){say('b','Todavía estoy con lo anterior. Si tarda mucho, toca Cancelar arriba.');save();render();return}AI.busy=true;stat('Pensando…');let r;
+try{if(!/\bya pague\b/.test(norm(o))&&await aiReady()){
 const t=today();
 const sys=`Eres el intérprete de una app de gastos personales en El Salvador (dólares). Hoy es ${ymd(t)} (${DIA[t.getDay()]}). Responde SOLO con un JSON válido, sin texto extra: {"items":[{"type":"in|out|bill","amount":0,"desc":"texto corto","category":"${CATS}","date":"YYYY-MM-DD"}],"answer":""}. type: in=ingreso (gané, cobré, vendí), out=gasto ya hecho, bill=pago pendiente por pagar. date: fecha del movimiento o de vencimiento, resolviendo hoy, mañana, el viernes, el 15; null si no hay. Un mensaje puede traer varios items. Si el usuario solo pregunta algo, deja items vacío y responde en "answer" en español informal y corto usando estos datos:\n${isQ(o)?summaryText()+'\n'+pendingText()+'\n'+S.tx.slice(-15).map(x=>x.date+' '+x.type+' '+x.amt+' '+x.desc).join('\n'):''}`;
 const res=await AI.eng.chat.completions.create({messages:[{role:'system',content:sys},{role:'user',content:o}],temperature:0.1,max_tokens:isQ(o)?220:150});
@@ -440,6 +455,7 @@ else if(a==='ocrtog'){OCR.items[+t].on=!OCR.items[+t].on;render()}
 else if(a==='ocrsave')ocrSave();
 else if(a==='ocrno'){OCR.items=[];OCR.raw='';render()}
 else if(a==='unlock')unlock();
+else if(a==='aioff')aiOff();
 else if(a==='ddel'){S.debts=S.debts.filter(x=>x.id!==t);save();render()}
 else if(a==='dpay'){const d=S.debts.find(x=>x.id===t);if(d){view='chat';render();inp.value='Abono a '+d.name+' ';inp.focus()}}
 else if(a==='tab'){view=t;render()}
